@@ -596,3 +596,22 @@ def test_ws_allows_no_origin(app_client: TestClient):
     except Exception as exc:
         assert "4403" not in str(exc)
     main.browser_mgr.running.pop(pid, None)
+
+
+# ── Binary Status / Download ─────────────────────────────────────────────────
+
+
+def test_binary_status_endpoint(app_client: TestClient):
+    resp = app_client.get("/api/binary/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body.keys()) == {"ready", "downloading", "error"}
+
+
+def test_binary_download_endpoint_triggers_start(app_client: TestClient, monkeypatch):
+    called = {"n": 0}
+    monkeypatch.setattr(main.binary_mgr, "start", lambda: called.__setitem__("n", called["n"] + 1))
+    resp = app_client.post("/api/binary/download")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert called["n"] == 1

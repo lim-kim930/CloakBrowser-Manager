@@ -177,6 +177,10 @@ class AuthMiddleware:
 # Singleton browser manager
 browser_mgr = BrowserManager()
 
+from .binary_manager import BinaryManager
+
+binary_mgr = BinaryManager()
+
 # Frontend build directory (React production build)
 FRONTEND_DIR = frontend_dir()
 
@@ -377,7 +381,8 @@ def _filter_rfb_client_messages(data: bytes) -> bytes:
 async def lifespan(app: FastAPI):
     db.init_db()
     await browser_mgr.cleanup_stale()
-    browser_mgr._auto_launch_task = asyncio.create_task(browser_mgr.auto_launch_all())
+    binary_mgr.start()  # background kernel download (idempotent on warm starts)
+    browser_mgr._auto_launch_task = asyncio.create_task(_startup_autolaunch())
     logger.info("CloakBrowser Manager started")
     yield
     logger.info("Shutting down — stopping all browsers...")
@@ -385,6 +390,12 @@ async def lifespan(app: FastAPI):
         browser_mgr._auto_launch_task.cancel()
         await asyncio.gather(browser_mgr._auto_launch_task, return_exceptions=True)
     await browser_mgr.cleanup_all()
+
+
+async def _startup_autolaunch():
+    """Wait for the binary to be ready, then auto-launch flagged profiles."""
+    await binary_mgr.wait_ready()
+    await browser_mgr.auto_launch_all()
 
 
 app = FastAPI(title="CloakBrowser Manager", lifespan=lifespan)
@@ -579,6 +590,17 @@ async def get_system_status():
         profiles_total=len(profiles),
         display_mode=display_mode(),
     )
+
+
+@app.get("/api/binary/status")
+async def get_binary_status():
+    return binary_mgr.status()
+
+
+@app.post("/api/binary/download")
+async def start_binary_download():
+    binary_mgr.start()
+    return {"ok": True}
 
 
 # ── Clipboard Relay ──────────────────────────────────────────────────────────
