@@ -191,6 +191,13 @@ def test_system_status(app_client: TestClient):
     assert data["profiles_total"] >= 1
 
 
+def test_status_reports_display_mode(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "display_mode", lambda: "native")
+    resp = app_client.get("/api/status")
+    assert resp.status_code == 200
+    assert resp.json()["display_mode"] == "native"
+
+
 # ── Launch Args ─────────────────────────────────────────────────────────────
 
 
@@ -251,18 +258,21 @@ def test_profile_clipboard_sync_update(app_client: TestClient):
 # ── Clipboard ────────────────────────────────────────────────────────────────
 
 
-def test_set_clipboard_not_running(app_client: TestClient):
+def test_set_clipboard_not_running(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "use_vnc", lambda: True)
     resp = app_client.post("/api/profiles/nonexistent/clipboard", json={"text": "hello"})
     assert resp.status_code == 404
 
 
-def test_get_clipboard_not_running(app_client: TestClient):
+def test_get_clipboard_not_running(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "use_vnc", lambda: True)
     resp = app_client.get("/api/profiles/nonexistent/clipboard")
     assert resp.status_code == 404
 
 
-def test_set_clipboard_success(app_client: TestClient):
+def test_set_clipboard_success(app_client: TestClient, monkeypatch):
     """Mock a running profile and patch xclip subprocess."""
+    monkeypatch.setattr(main, "use_vnc", lambda: True)
     create = app_client.post("/api/profiles", json={"name": "Clip"})
     pid = create.json()["id"]
 
@@ -289,8 +299,9 @@ def test_set_clipboard_success(app_client: TestClient):
     main.browser_mgr.running.pop(pid, None)
 
 
-def test_get_clipboard_from_page(app_client: TestClient):
+def test_get_clipboard_from_page(app_client: TestClient, monkeypatch):
     """Mock running profile with a page that has clipboard text."""
+    monkeypatch.setattr(main, "use_vnc", lambda: True)
     create = app_client.post("/api/profiles", json={"name": "ClipRead"})
     pid = create.json()["id"]
 
@@ -312,6 +323,31 @@ def test_get_clipboard_from_page(app_client: TestClient):
     assert resp.json()["text"] == "copied text"
 
     # Cleanup
+    main.browser_mgr.running.pop(pid, None)
+
+
+def test_set_clipboard_501_in_native_mode(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "use_vnc", lambda: False)
+    create = app_client.post("/api/profiles", json={"name": "N"})
+    pid = create.json()["id"]
+    # inject a running profile so the mode guard is what rejects, not "not running"
+    mock_running = MagicMock(spec=RunningProfile)
+    mock_running.display = None
+    main.browser_mgr.running[pid] = mock_running
+    resp = app_client.post(f"/api/profiles/{pid}/clipboard", json={"text": "x"})
+    assert resp.status_code == 501
+    main.browser_mgr.running.pop(pid, None)
+
+
+def test_get_clipboard_501_in_native_mode(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "use_vnc", lambda: False)
+    create = app_client.post("/api/profiles", json={"name": "N"})
+    pid = create.json()["id"]
+    mock_running = MagicMock(spec=RunningProfile)
+    mock_running.display = None
+    main.browser_mgr.running[pid] = mock_running
+    resp = app_client.get(f"/api/profiles/{pid}/clipboard")
+    assert resp.status_code == 501
     main.browser_mgr.running.pop(pid, None)
 
 

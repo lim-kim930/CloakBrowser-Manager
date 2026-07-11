@@ -26,7 +26,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import database as db
 from .browser_manager import BrowserManager
-from .config import frontend_dir
+from .config import display_mode, frontend_dir, use_vnc
 from .models import (
     ClipboardRequest,
     LaunchResponse,
@@ -543,7 +543,7 @@ async def launch_profile(profile_id: str):
         profile_id=profile_id,
         status="running",
         vnc_ws_port=running.ws_port,
-        display=f":{running.display}",
+        display=f":{running.display}" if running.display is not None else None,
         cdp_url=f"/api/profiles/{profile_id}/cdp",
     )
 
@@ -577,6 +577,7 @@ async def get_system_status():
         running_count=len(browser_mgr.running),
         binary_version=CHROMIUM_VERSION,
         profiles_total=len(profiles),
+        display_mode=display_mode(),
     )
 
 
@@ -591,6 +592,8 @@ _xclip_procs: dict[int, asyncio.subprocess.Process] = {}
 @app.post("/api/profiles/{profile_id}/clipboard")
 async def set_clipboard(profile_id: str, body: ClipboardRequest):
     """Push text into the VNC session's X clipboard via xclip."""
+    if not use_vnc():
+        raise HTTPException(status_code=501, detail="Clipboard relay is VNC-only")
     running = browser_mgr.running.get(profile_id)
     if not running:
         raise HTTPException(status_code=404, detail="Profile not running")
@@ -627,6 +630,8 @@ async def get_clipboard(profile_id: str):
     Instead, read via Playwright's CDP connection to Chrome (navigator.clipboard.readText).
     Falls back to xclip for non-Chrome clipboard owners.
     """
+    if not use_vnc():
+        raise HTTPException(status_code=501, detail="Clipboard relay is VNC-only")
     running = browser_mgr.running.get(profile_id)
     if not running:
         raise HTTPException(status_code=404, detail="Profile not running")
