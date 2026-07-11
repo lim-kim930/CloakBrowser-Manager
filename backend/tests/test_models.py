@@ -195,3 +195,19 @@ def test_profile_response_cdp_url_default_none():
         created_at="2026-01-01T00:00:00", updated_at="2026-01-01T00:00:00",
     )
     assert r.cdp_url is None
+
+
+def test_launch_response_allows_null_vnc_fields():
+    from backend.models import LaunchResponse
+    r = LaunchResponse(profile_id="abc", cdp_url="/api/profiles/abc/cdp")
+    assert r.vnc_ws_port is None
+    assert r.display is None
+    assert r.status == "running"
+
+
+def test_status_response_has_display_mode():
+    from backend.models import StatusResponse
+    s = StatusResponse(
+        running_count=0, binary_version="x", profiles_total=0, display_mode="native"
+    )
+    assert s.display_mode == "native"
