@@ -25,6 +25,10 @@ _mock_config.CHROMIUM_VERSION = "0.0.0-test"  # type: ignore[attr-defined]
 sys.modules.setdefault("cloakbrowser", _mock_cloakbrowser)
 sys.modules.setdefault("cloakbrowser.config", _mock_config)
 
+_mock_download = types.ModuleType("cloakbrowser.download")
+_mock_download.ensure_binary = MagicMock(return_value="/fake/chrome")  # type: ignore[attr-defined]
+sys.modules.setdefault("cloakbrowser.download", _mock_download)
+
 
 from backend import database as db  # noqa: E402
 
