@@ -49,6 +49,25 @@ def sample_profile(tmp_db: Path):
     return db.create_profile(name="Test Profile", fingerprint_seed=12345)
 
 
+@pytest.fixture(autouse=True)
+def _reset_binary_mgr():
+    """Reset the binary_mgr singleton between tests.
+
+    Each TestClient lifespan runs on a fresh event loop. Without a reset the
+    module-level singleton keeps ready=True plus a _task bound to a prior
+    test's (now closed) loop, so wait_ready() in later lifespans raises
+    'ValueError: The future belongs to a different loop' as background noise.
+    Autouse covers app_client here and test_auth.py's client fixtures alike.
+    """
+    main = sys.modules.get("backend.main")
+    if main is not None:
+        main.binary_mgr.ready = False
+        main.binary_mgr.downloading = False
+        main.binary_mgr.error = None
+        main.binary_mgr._task = None
+    yield
+
+
 @pytest.fixture()
 def app_client(tmp_db: Path, monkeypatch: pytest.MonkeyPatch):
     """FastAPI TestClient with mocked DB and browser manager."""
