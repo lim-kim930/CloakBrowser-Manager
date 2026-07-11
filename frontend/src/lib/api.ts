@@ -62,8 +62,8 @@ export interface ProfileCreateData {
 export interface LaunchResult {
   profile_id: string;
   status: string;
-  vnc_ws_port: number;
-  display: string;
+  vnc_ws_port: number | null;
+  display: string | null;
   cdp_url: string | null;
 }
 
@@ -71,6 +71,13 @@ export interface SystemStatus {
   running_count: number;
   binary_version: string;
   profiles_total: number;
+  display_mode: "native" | "vnc";
+}
+
+export interface BinaryStatus {
+  ready: boolean;
+  downloading: boolean;
+  error: string | null;
 }
 
 class ApiError extends Error {
@@ -155,4 +162,9 @@ export const api = {
 
   getClipboard: (id: string) =>
     request<{ text: string }>(`/api/profiles/${id}/clipboard`),
+
+  getBinaryStatus: () => request<BinaryStatus>("/api/binary/status"),
+
+  downloadBinary: () =>
+    request<{ ok: boolean }>("/api/binary/download", { method: "POST" }),
 };

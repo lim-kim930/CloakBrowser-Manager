@@ -116,6 +116,31 @@ describe("api.getClipboard", () => {
   });
 });
 
+// ── getBinaryStatus ─────────────────────────────────────────────────────────
+
+describe("api.getBinaryStatus", () => {
+  it("GETs binary status", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ ready: false, downloading: true, error: null }),
+    );
+    const result = await api.getBinaryStatus();
+    expect(result.downloading).toBe(true);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/binary/status");
+  });
+});
+
+// ── downloadBinary ──────────────────────────────────────────────────────────
+
+describe("api.downloadBinary", () => {
+  it("POSTs to trigger download", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    await api.downloadBinary();
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/binary/download");
+    expect(options.method).toBe("POST");
+  });
+});
+
 // ── Error handling ──────────────────────────────────────────────────────────
 
 describe("error handling", () => {
