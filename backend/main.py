@@ -26,6 +26,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import database as db
 from .browser_manager import BrowserManager
+from .config import frontend_dir
 from .models import (
     ClipboardRequest,
     LaunchResponse,
@@ -177,7 +178,7 @@ class AuthMiddleware:
 browser_mgr = BrowserManager()
 
 # Frontend build directory (React production build)
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+FRONTEND_DIR = frontend_dir()
 
 
 # ---------------------------------------------------------------------------

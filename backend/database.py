@@ -11,7 +11,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path("/data")
+from .config import get_data_dir
+
+DATA_DIR = get_data_dir()
 DB_PATH = DATA_DIR / "profiles.db"
 
 
