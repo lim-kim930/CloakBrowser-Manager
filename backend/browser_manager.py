@@ -294,8 +294,10 @@ class BrowserManager:
                 self._launching.discard(profile_id)
 
             logger.info(
-                "Launched profile %s on display :%d (ws_port=%d, cdp_port=%d)",
-                profile_id, display, ws_port, cdp_port,
+                "Launched profile %s (display=%s, ws_port=%s, cdp_port=%d)",
+                profile_id,
+                f":{display}" if display is not None else "native",
+                ws_port, cdp_port,
             )
 
             return running
