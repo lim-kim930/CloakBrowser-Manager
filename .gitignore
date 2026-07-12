@@ -20,7 +20,6 @@ deploy.sh
 
 # Claude Code
 .claude/
-CLAUDE.md
 publish-docker.sh
 .beads
 debug
