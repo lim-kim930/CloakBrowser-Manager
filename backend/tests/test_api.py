@@ -81,6 +81,34 @@ def test_update_profile_not_found(app_client: TestClient):
     assert resp.status_code == 404
 
 
+def test_profile_kernel_version_roundtrip(app_client: TestClient):
+    resp = app_client.post(
+        "/api/profiles", json={"name": "Pinned", "kernel_version": "146.0.7680.177.5"}
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["kernel_version"] == "146.0.7680.177.5"
+    pid = data["id"]
+
+    resp = app_client.put(
+        f"/api/profiles/{pid}", json={"kernel_version": "148.0.7778.215.2"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["kernel_version"] == "148.0.7778.215.2"
+
+    # Empty string clears the pin
+    resp = app_client.put(f"/api/profiles/{pid}", json={"kernel_version": ""})
+    assert resp.status_code == 200
+    assert resp.json()["kernel_version"] is None
+
+
+def test_profile_kernel_version_invalid_rejected(app_client: TestClient):
+    resp = app_client.post(
+        "/api/profiles", json={"name": "Bad", "kernel_version": "latest"}
+    )
+    assert resp.status_code == 422
+
+
 def test_delete_profile(app_client: TestClient):
     create = app_client.post("/api/profiles", json={"name": "Delete Me"})
     pid = create.json()["id"]

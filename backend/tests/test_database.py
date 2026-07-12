@@ -140,6 +140,26 @@ def test_list_profiles_includes_launch_args(tmp_db: Path):
     assert args_by_name["B"] == []
 
 
+def test_create_profile_with_kernel_version(tmp_db: Path):
+    p = db.create_profile("Pinned", kernel_version="146.0.7680.177.5")
+    assert p["kernel_version"] == "146.0.7680.177.5"
+    fetched = db.get_profile(p["id"])
+    assert fetched["kernel_version"] == "146.0.7680.177.5"
+
+
+def test_create_profile_kernel_version_defaults_none(tmp_db: Path):
+    p = db.create_profile("Unpinned")
+    assert p["kernel_version"] is None
+
+
+def test_update_profile_kernel_version(tmp_db: Path):
+    p = db.create_profile("Pin me")
+    updated = db.update_profile(p["id"], kernel_version="148.0.7778.215.2")
+    assert updated["kernel_version"] == "148.0.7778.215.2"
+    cleared = db.update_profile(p["id"], kernel_version=None)
+    assert cleared["kernel_version"] is None
+
+
 # ── get_profile ──────────────────────────────────────────────────────────────
 
 
