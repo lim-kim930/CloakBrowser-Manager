@@ -9,6 +9,7 @@ import { RunningPanel } from "./components/RunningPanel";
 import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { LoginPage } from "./components/LoginPage";
+import { CloseModal } from "./components/CloseModal";
 
 type AuthState = "checking" | "required" | "ok" | "error";
 type View = "empty" | "create" | "edit" | "view";
@@ -123,6 +124,7 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
 
   const selected = profiles.find((p) => p.id === selectedId) ?? null;
 
@@ -131,6 +133,19 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
       setView("edit");
     }
   }, [view, selected]);
+
+  useEffect(() => {
+    window.__cbShowCloseModal = () => setCloseModalOpen(true);
+    return () => { delete window.__cbShowCloseModal; };
+  }, []);
+
+  const handleCloseChoice = useCallback(
+    (choice: "exit" | "tray" | "cancel", remember: boolean) => {
+      setCloseModalOpen(false);
+      window.pywebview?.api?.on_close_choice?.(choice, remember);
+    },
+    [],
+  );
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
@@ -318,6 +333,8 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
           )}
         </div>
       </div>
+
+      <CloseModal open={closeModalOpen} onChoice={handleCloseChoice} />
     </div>
   );
 }
