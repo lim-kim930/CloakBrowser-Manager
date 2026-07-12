@@ -16,6 +16,9 @@
 
 ## 建议：合并后改进（终审 DEFER 清单，均不阻塞）
 
+- 数据目录 2026-07-12 改为 exe 同级后，旧 `%APPDATA%\CloakBrowser-Manager` 数据**不自动迁移**（发布前无真实用户，按设计放弃；如需找回旧测试数据，设 `DATA_DIR` 指回即可）。
+- Settings 修改内核存储位置后，旧位置的内核目录**不清理**（约 200MB 残留，用户可手删；`~/.cloakbrowser` 默认位置同理）。
+
 - VNC 路径 `launch()` 无端到端回归测试（历史空缺，本分支靠 diff 审查保障）。
 - `desktop/settings.py`：原子写（temp + os.replace）；`UnicodeDecodeError` 加入兜底 except。
 - `Controller.running_count()`：pywebview GUI 线程上同步 urlopen(timeout=2)，后端不可达时关窗最多冻结 2s；可改异步/缩短。
