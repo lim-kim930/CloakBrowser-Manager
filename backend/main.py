@@ -38,6 +38,10 @@ from .config import (
 from .models import (
     BinaryLocationUpdate,
     ClipboardRequest,
+    KernelDefaultUpdate,
+    KernelImportRequest,
+    KernelInfo,
+    KernelListResponse,
     LaunchResponse,
     LoginRequest,
     ProfileCreate,
@@ -702,6 +706,101 @@ async def set_binary_location(body: BinaryLocationUpdate):
         # Native: re-scan the new location; downloads never happen here.
         binary_mgr.mark_ready(kernel_manager.any_kernel_installed())
     return _binary_location_payload()
+
+
+# ── Kernel Management ────────────────────────────────────────────────────────
+# User-managed kernel installs (native mode's replacement for auto-download).
+# Serializes import/delete: both mutate the kernel storage dir on disk.
+
+_kernel_lock = asyncio.Lock()
+
+# HTTP status per kernel_manager error type. KernelNotFoundError maps to 404
+# where the version is the addressed resource (DELETE path param); endpoints
+# taking it in a body override to 400.
+_KERNEL_ERROR_STATUS: dict[type, int] = {
+    kernel_manager.KernelSourceError: 400,
+    kernel_manager.KernelVersionError: 422,
+    kernel_manager.KernelExistsError: 409,
+    kernel_manager.KernelNotFoundError: 404,
+}
+
+
+def _kernel_http_error(exc: kernel_manager.KernelError) -> HTTPException:
+    return HTTPException(
+        status_code=_KERNEL_ERROR_STATUS.get(type(exc), 500), detail=str(exc)
+    )
+
+
+def _kernel_list_payload() -> KernelListResponse:
+    running_versions = {
+        r.kernel_version
+        for r in browser_mgr.running.values()
+        if getattr(r, "kernel_version", None)
+    }
+    kernels = [
+        KernelInfo(**k, in_use=k["version"] in running_versions)
+        for k in kernel_manager.list_kernels()
+    ]
+    return KernelListResponse(
+        kernels=kernels,
+        default_version=kernel_manager.get_default_version(),
+        kernel_dir=str(effective_kernel_dir()),
+    )
+
+
+@app.get("/api/kernels", response_model=KernelListResponse)
+async def list_kernels():
+    return _kernel_list_payload()
+
+
+@app.post("/api/kernels/import", response_model=KernelListResponse)
+async def import_kernel(body: KernelImportRequest):
+    """Install a user-downloaded kernel (.zip or extracted folder) into the store."""
+    async with _kernel_lock:
+        try:
+            await asyncio.to_thread(
+                kernel_manager.import_kernel, body.source_path, body.version
+            )
+        except kernel_manager.KernelError as exc:
+            raise _kernel_http_error(exc)
+    if not use_vnc():
+        binary_mgr.mark_ready(True)
+    return _kernel_list_payload()
+
+
+@app.delete("/api/kernels/{version}", response_model=KernelListResponse)
+async def delete_kernel(version: str):
+    in_use = [
+        pid
+        for pid, r in browser_mgr.running.items()
+        if getattr(r, "kernel_version", None) == version
+    ]
+    if in_use:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Kernel {version} is used by {len(in_use)} running profile(s) — stop them first",
+        )
+    async with _kernel_lock:
+        try:
+            await asyncio.to_thread(kernel_manager.delete_kernel, version)
+        except kernel_manager.KernelError as exc:
+            raise _kernel_http_error(exc)
+    if not use_vnc():
+        binary_mgr.mark_ready(kernel_manager.any_kernel_installed())
+    return _kernel_list_payload()
+
+
+@app.put("/api/kernels/default", response_model=KernelListResponse)
+async def set_default_kernel(body: KernelDefaultUpdate):
+    """Set the default kernel version; null/empty clears it (newest wins)."""
+    try:
+        kernel_manager.set_default_version(body.version)
+    except kernel_manager.KernelNotFoundError as exc:
+        # Body value, not an addressed resource → client error, not 404
+        raise HTTPException(status_code=400, detail=str(exc))
+    except kernel_manager.KernelError as exc:
+        raise _kernel_http_error(exc)
+    return _kernel_list_payload()
 
 
 # ── Clipboard Relay ──────────────────────────────────────────────────────────
