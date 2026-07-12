@@ -1,0 +1,5 @@
+# Desktop client dependencies (Windows). Backend deps come from backend/requirements.txt.
+pywebview>=5.0
+pystray>=0.19
+pillow>=10.0
+pyinstaller>=6.0
