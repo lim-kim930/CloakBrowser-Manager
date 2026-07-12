@@ -4,7 +4,15 @@
 - Windows 10/11 x64，已装 Edge WebView2 Runtime（Win11 自带）。
 - Python 3.12+（构建环境实测 3.14）（用 `backend/.venv`）。
 
-## 步骤（在仓库根目录）
+## 一键脚本
+
+```
+desktop\build.bat
+```
+
+依次执行下面全部步骤（前端用 pnpm），产物同为 `dist/CloakBrowserManager/CloakBrowserManager.exe`。任意目录均可调用，脚本自动定位仓库根。
+
+## 手动步骤（在仓库根目录）
 1. 装依赖：
    ```
    backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
