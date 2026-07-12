@@ -394,8 +394,8 @@ async def lifespan(app: FastAPI):
 
 async def _startup_autolaunch():
     """Wait for the binary to be ready, then auto-launch flagged profiles."""
-    await binary_mgr.wait_ready()
-    await browser_mgr.auto_launch_all()
+    if await binary_mgr.wait_ready():
+        await browser_mgr.auto_launch_all()
 
 
 app = FastAPI(title="CloakBrowser Manager", lifespan=lifespan)

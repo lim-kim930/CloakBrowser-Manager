@@ -615,3 +615,23 @@ def test_binary_download_endpoint_triggers_start(app_client: TestClient, monkeyp
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
     assert called["n"] == 1
+
+
+# ── Startup Auto-launch Gate ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_startup_autolaunch_gates_on_binary_ready(monkeypatch):
+    """auto_launch_all runs only when the binary became ready."""
+    auto = AsyncMock()
+    monkeypatch.setattr(main.browser_mgr, "auto_launch_all", auto)
+
+    # Binary never became ready → skip auto-launch
+    monkeypatch.setattr(main.binary_mgr, "wait_ready", AsyncMock(return_value=False))
+    await main._startup_autolaunch()
+    auto.assert_not_called()
+
+    # Binary ready → auto-launch flagged profiles
+    monkeypatch.setattr(main.binary_mgr, "wait_ready", AsyncMock(return_value=True))
+    await main._startup_autolaunch()
+    auto.assert_called_once()
