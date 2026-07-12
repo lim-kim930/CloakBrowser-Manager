@@ -52,7 +52,9 @@ logging.getLogger("asyncio").setLevel(logging.WARNING)
 AUTH_TOKEN: str | None = os.environ.get("AUTH_TOKEN") or None
 
 # Paths that bypass authentication even when AUTH_TOKEN is set
-_AUTH_EXEMPT = frozenset({"/api/auth/status", "/api/auth/login", "/api/status"})
+_AUTH_EXEMPT = frozenset(
+    {"/api/auth/status", "/api/auth/login", "/api/status", "/api/binary/status"}
+)
 
 
 def _check_auth(scope: Scope) -> bool:

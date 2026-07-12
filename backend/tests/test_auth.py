@@ -137,3 +137,15 @@ def test_auth_status_always_accessible(client_auth: TestClient):
     """GET /api/auth/status must work without auth (frontend bootstrap)."""
     resp = client_auth.get("/api/auth/status")
     assert resp.status_code == 200
+
+
+def test_binary_status_always_accessible(client_auth: TestClient):
+    """GET /api/binary/status must work without auth (frontend polls before login)."""
+    resp = client_auth.get("/api/binary/status")
+    assert resp.status_code == 200
+
+
+def test_binary_download_requires_auth(client_auth: TestClient):
+    """POST /api/binary/download must stay protected when auth is enabled."""
+    resp = client_auth.post("/api/binary/download")
+    assert resp.status_code == 401
