@@ -225,6 +225,7 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
             {selected && (
               <LaunchButton
                 status={selected.status}
+                canLaunch={binary.ready}
                 onLaunch={handleLaunch}
                 onStop={handleStop}
               />
@@ -281,6 +282,7 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
               profile={null}
               onSave={handleCreate}
               onCancel={() => setView("empty")}
+              displayMode={displayMode}
             />
           )}
 
@@ -293,6 +295,7 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
                 setSelectedId(null);
                 setView("empty");
               }}
+              displayMode={displayMode}
             />
           )}
 

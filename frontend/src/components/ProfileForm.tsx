@@ -7,6 +7,7 @@ interface ProfileFormProps {
   onSave: (data: ProfileCreateData) => Promise<void>;
   onDelete?: () => Promise<void>;
   onCancel: () => void;
+  displayMode?: "native" | "vnc";
 }
 
 const RESOLUTION_PRESETS: Record<string, { width: number; height: number }> = {
@@ -52,7 +53,7 @@ const GPU_PRESETS: Record<string, { vendor: string; renderer: string }> = {
   },
 };
 
-export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileFormProps) {
+export function ProfileForm({ profile, onSave, onDelete, onCancel, displayMode = "vnc" }: ProfileFormProps) {
   const isEdit = profile !== null;
 
   const [form, setForm] = useState<ProfileCreateData>({
@@ -436,15 +437,17 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
                 </select>
               </div>
             )}
-            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.clipboard_sync ?? true}
-                onChange={(e) => set("clipboard_sync", e.target.checked)}
-                className="rounded border-border bg-surface-2"
-              />
-              Enable clipboard sync by default in VNC viewer
-            </label>
+            {displayMode === "vnc" && (
+              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.clipboard_sync ?? true}
+                  onChange={(e) => set("clipboard_sync", e.target.checked)}
+                  className="rounded border-border bg-surface-2"
+                />
+                Enable clipboard sync by default in VNC viewer
+              </label>
+            )}
             <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
               <input
                 type="checkbox"

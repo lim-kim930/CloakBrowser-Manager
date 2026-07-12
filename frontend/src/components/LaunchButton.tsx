@@ -3,11 +3,12 @@ import { useState } from "react";
 
 interface LaunchButtonProps {
   status: "running" | "stopped";
+  canLaunch?: boolean;
   onLaunch: () => Promise<void>;
   onStop: () => Promise<void>;
 }
 
-export function LaunchButton({ status, onLaunch, onStop }: LaunchButtonProps) {
+export function LaunchButton({ status, canLaunch = true, onLaunch, onStop }: LaunchButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +50,11 @@ export function LaunchButton({ status, onLaunch, onStop }: LaunchButtonProps) {
 
   return (
     <div>
-      <button onClick={handleClick} className="btn-primary flex items-center gap-1.5">
+      <button
+        onClick={handleClick}
+        disabled={!canLaunch}
+        className={`btn-primary flex items-center gap-1.5 ${!canLaunch ? "opacity-50 cursor-not-allowed" : ""}`}
+      >
         <Play className="h-3.5 w-3.5" />
         <span>Launch</span>
       </button>
