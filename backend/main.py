@@ -12,6 +12,7 @@ import logging
 import os
 import struct
 import shutil
+import sys
 from contextlib import asynccontextmanager
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -53,6 +54,35 @@ from .models import (
 )
 
 logger = logging.getLogger("cloakbrowser.manager")
+
+
+def _harden_stdio() -> None:
+    """Keep third-party console writes from crashing requests.
+
+    The cloakbrowser package writes a promo banner containing "→" straight to
+    sys.stderr while resolving the kernel at launch. On Windows that stream
+    can use a legacy codepage — UnicodeEncodeError is a ValueError, so the
+    launch endpoint would report the codec error instead of launching — or be
+    None outright in the packaged windowed client (AttributeError). Console
+    output is never worth failing a request over: replace unencodable
+    characters and give absent streams a sink.
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            try:
+                setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+            except OSError:
+                pass
+            continue
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except Exception:
+            pass
+
+
+_harden_stdio()
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logging.getLogger("websockets").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
