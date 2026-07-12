@@ -59,6 +59,18 @@ class BinaryManager:
         self.error = None
         self._task = None
 
+    def mark_ready(self, ready: bool) -> None:
+        """Set readiness from a synchronous check, without any download.
+
+        Native mode uses this instead of start(): kernels are user-managed
+        there, so readiness is simply "an installed kernel exists on disk".
+        wait_ready() keeps working — with no _task it returns this flag.
+        """
+        self.ready = ready
+        self.downloading = False
+        self.error = None
+        self._task = None
+
     async def wait_ready(self) -> bool:
         """Await the in-flight download (if any) and report readiness."""
         if self._task is not None:

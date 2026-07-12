@@ -205,9 +205,11 @@ def test_stop_not_running(app_client: TestClient):
 # ── System Status ────────────────────────────────────────────────────────────
 
 
-def test_system_status(app_client: TestClient):
+def test_system_status(app_client: TestClient, monkeypatch):
     # Clear any leaked running profiles from prior tests
     main.browser_mgr.running.clear()
+    # VNC mode reports the package's bundled version constant
+    monkeypatch.setattr(main, "use_vnc", lambda: True)
 
     # Create a profile so profiles_total > 0
     app_client.post("/api/profiles", json={"name": "Status Test"})
@@ -217,6 +219,24 @@ def test_system_status(app_client: TestClient):
     assert data["running_count"] == 0
     assert data["binary_version"] == "0.0.0-test"
     assert data["profiles_total"] >= 1
+
+
+def test_system_status_native_reports_installed_kernel(
+    app_client: TestClient, monkeypatch, tmp_path
+):
+    from backend.config import KERNEL_DIR_ENV
+    from backend.tests.test_kernel_manager import make_kernel
+
+    main.browser_mgr.running.clear()
+    monkeypatch.setattr(main, "use_vnc", lambda: False)
+    monkeypatch.setenv(KERNEL_DIR_ENV, str(tmp_path))
+
+    resp = app_client.get("/api/status")
+    assert resp.json()["binary_version"] == "not installed"
+
+    make_kernel(tmp_path, "146.0.7680.177.5")
+    resp = app_client.get("/api/status")
+    assert resp.json()["binary_version"] == "146.0.7680.177.5"
 
 
 def test_status_reports_display_mode(app_client: TestClient, monkeypatch):
@@ -636,13 +656,39 @@ def test_binary_status_endpoint(app_client: TestClient):
     assert set(body.keys()) == {"ready", "downloading", "error"}
 
 
+def test_binary_status_native_reflects_installed_kernels(
+    app_client: TestClient, monkeypatch, tmp_path
+):
+    from backend.config import KERNEL_DIR_ENV
+    from backend.tests.test_kernel_manager import make_kernel
+
+    monkeypatch.setattr(main, "use_vnc", lambda: False)
+    monkeypatch.setenv(KERNEL_DIR_ENV, str(tmp_path))
+
+    body = app_client.get("/api/binary/status").json()
+    assert body == {"ready": False, "downloading": False, "error": None}
+
+    make_kernel(tmp_path, "146.0.7680.177.5")
+    body = app_client.get("/api/binary/status").json()
+    assert body["ready"] is True
+
+
 def test_binary_download_endpoint_triggers_start(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "use_vnc", lambda: True)
     called = {"n": 0}
     monkeypatch.setattr(main.binary_mgr, "start", lambda: called.__setitem__("n", called["n"] + 1))
     resp = app_client.post("/api/binary/download")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
     assert called["n"] == 1
+
+
+def test_binary_download_disabled_in_native_mode(app_client: TestClient, monkeypatch):
+    monkeypatch.setattr(main, "use_vnc", lambda: False)
+    start = lambda: pytest.fail("native mode must never start a download")  # noqa: E731
+    monkeypatch.setattr(main.binary_mgr, "start", start)
+    resp = app_client.post("/api/binary/download")
+    assert resp.status_code == 501
 
 
 # ── Startup Auto-launch Gate ─────────────────────────────────────────────────

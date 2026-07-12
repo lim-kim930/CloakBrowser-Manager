@@ -108,21 +108,16 @@ def kernel_installed(version: str) -> bool:
     return _valid_version(version) and _kernel_exe(version).is_file()
 
 
-def any_kernel_installed() -> bool:
-    return bool(list_kernels())
-
-
-def list_kernels() -> list[dict[str, Any]]:
-    """Scan the kernel storage dir for installed versions, newest first.
+def _iter_kernel_dirs() -> list[tuple[str, Path]]:
+    """(version, dir) pairs for launchable kernels in the storage dir.
 
     ``-pro`` suffixed dirs are skipped: the free ``browser_version`` pin path
-    the manager uses never resolves them, so listing them would offer
-    unlaunchable choices.
+    the manager uses never resolves them, so they would be unlaunchable.
     """
     root = effective_kernel_dir()
     if not root.is_dir():
         return []
-    kernels: list[dict[str, Any]] = []
+    found: list[tuple[str, Path]] = []
     for entry in root.iterdir():
         if not entry.is_dir() or not entry.name.startswith(_KERNEL_DIR_PREFIX):
             continue
@@ -131,16 +126,32 @@ def list_kernels() -> list[dict[str, Any]]:
             continue
         if not (entry / _exe_relpath()).is_file():
             continue
-        kernels.append(
-            {
-                "version": version,
-                "path": str(entry),
-                "size": _dir_size(entry),
-                "pro": False,
-            }
-        )
-    kernels.sort(key=lambda k: _version_tuple(k["version"]), reverse=True)
-    return kernels
+        found.append((version, entry))
+    found.sort(key=lambda pair: _version_tuple(pair[0]), reverse=True)
+    return found
+
+
+def any_kernel_installed() -> bool:
+    """Cheap readiness probe (no size walk) — safe to call on every poll."""
+    return bool(_iter_kernel_dirs())
+
+
+def installed_versions() -> list[str]:
+    """Installed kernel versions, newest first (no size walk)."""
+    return [version for version, _ in _iter_kernel_dirs()]
+
+
+def list_kernels() -> list[dict[str, Any]]:
+    """Installed kernels with on-disk sizes, newest first (for the API/UI)."""
+    return [
+        {
+            "version": version,
+            "path": str(path),
+            "size": _dir_size(path),
+            "pro": False,
+        }
+        for version, path in _iter_kernel_dirs()
+    ]
 
 
 def get_default_version() -> str | None:
@@ -183,8 +194,8 @@ def resolve_kernel_version(explicit: str | None) -> str | None:
     default = get_default_version()
     if default:
         return default
-    kernels = list_kernels()
-    return kernels[0]["version"] if kernels else None
+    versions = installed_versions()
+    return versions[0] if versions else None
 
 
 def _safe_extract_zip(archive: Path, dest: Path) -> None:

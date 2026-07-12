@@ -25,6 +25,7 @@ import starlette.requests
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import database as db
+from . import kernel_manager
 from .browser_manager import BrowserManager
 from .config import (
     KERNEL_DIR_ENV,
@@ -405,7 +406,13 @@ async def lifespan(app: FastAPI):
     db.init_db()
     await browser_mgr.cleanup_stale()
     _apply_persisted_kernel_dir()
-    binary_mgr.start()  # background kernel download (idempotent on warm starts)
+    if use_vnc():
+        binary_mgr.start()  # background kernel download (idempotent on warm starts)
+    else:
+        # Native mode: kernels are user-managed — never download or auto-update.
+        # Readiness is a synchronous "is any kernel installed" scan.
+        os.environ.setdefault("CLOAKBROWSER_AUTO_UPDATE", "false")
+        binary_mgr.mark_ready(kernel_manager.any_kernel_installed())
     browser_mgr._auto_launch_task = asyncio.create_task(_startup_autolaunch())
     logger.info("CloakBrowser Manager started")
     yield
@@ -607,10 +614,16 @@ async def get_profile_status(profile_id: str):
 async def get_system_status():
     from cloakbrowser.config import CHROMIUM_VERSION
 
+    if use_vnc():
+        binary_version = CHROMIUM_VERSION
+    else:
+        # Native: report the kernel an unpinned launch would actually use.
+        binary_version = kernel_manager.resolve_kernel_version(None) or "not installed"
+
     profiles = db.list_profiles()
     return StatusResponse(
         running_count=len(browser_mgr.running),
-        binary_version=CHROMIUM_VERSION,
+        binary_version=binary_version,
         profiles_total=len(profiles),
         display_mode=display_mode(),
     )
@@ -618,11 +631,24 @@ async def get_system_status():
 
 @app.get("/api/binary/status")
 async def get_binary_status():
+    if not use_vnc():
+        # Native: readiness is live "any kernel installed" so an import/delete
+        # flips it without a restart. There is never a download in flight.
+        return {
+            "ready": kernel_manager.any_kernel_installed(),
+            "downloading": False,
+            "error": None,
+        }
     return binary_mgr.status()
 
 
 @app.post("/api/binary/download")
 async def start_binary_download():
+    if not use_vnc():
+        raise HTTPException(
+            status_code=501,
+            detail="Kernels are user-managed in native mode — import one in Settings → Browser kernels",
+        )
     binary_mgr.start()
     return {"ok": True}
 
@@ -647,7 +673,8 @@ async def set_binary_location(body: BinaryLocationUpdate):
 
     Persists across restarts (settings table) and re-points the cloakbrowser
     package immediately via CLOAKBROWSER_CACHE_DIR, then re-checks the binary
-    at the new location (downloading it there if missing).
+    at the new location (VNC: downloading it there if missing; native: only
+    re-scanning for user-installed kernels).
     """
     if binary_mgr.downloading:
         raise HTTPException(
@@ -669,7 +696,11 @@ async def set_binary_location(body: BinaryLocationUpdate):
         db.set_setting(KERNEL_DIR_SETTING, None)
         os.environ.pop(KERNEL_DIR_ENV, None)
     binary_mgr.reset()
-    binary_mgr.start()
+    if use_vnc():
+        binary_mgr.start()
+    else:
+        # Native: re-scan the new location; downloads never happen here.
+        binary_mgr.mark_ready(kernel_manager.any_kernel_installed())
     return _binary_location_payload()
 
 
