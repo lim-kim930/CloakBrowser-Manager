@@ -26,8 +26,16 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import database as db
 from .browser_manager import BrowserManager
-from .config import display_mode, frontend_dir, use_vnc
+from .config import (
+    KERNEL_DIR_ENV,
+    default_kernel_dir,
+    display_mode,
+    effective_kernel_dir,
+    frontend_dir,
+    use_vnc,
+)
 from .models import (
+    BinaryLocationUpdate,
     ClipboardRequest,
     LaunchResponse,
     LoginRequest,
@@ -182,6 +190,19 @@ browser_mgr = BrowserManager()
 from .binary_manager import BinaryManager
 
 binary_mgr = BinaryManager()
+
+# settings-table key holding the user-chosen kernel storage directory
+KERNEL_DIR_SETTING = "kernel_dir"
+
+
+def _apply_persisted_kernel_dir() -> None:
+    """Export the persisted kernel location before the first ensure_binary() call.
+
+    setdefault: an explicit CLOAKBROWSER_CACHE_DIR env var wins over the UI setting.
+    """
+    saved = db.get_setting(KERNEL_DIR_SETTING)
+    if saved:
+        os.environ.setdefault(KERNEL_DIR_ENV, saved)
 
 # Frontend build directory (React production build)
 FRONTEND_DIR = frontend_dir()
@@ -383,6 +404,7 @@ def _filter_rfb_client_messages(data: bytes) -> bytes:
 async def lifespan(app: FastAPI):
     db.init_db()
     await browser_mgr.cleanup_stale()
+    _apply_persisted_kernel_dir()
     binary_mgr.start()  # background kernel download (idempotent on warm starts)
     browser_mgr._auto_launch_task = asyncio.create_task(_startup_autolaunch())
     logger.info("CloakBrowser Manager started")
@@ -603,6 +625,52 @@ async def get_binary_status():
 async def start_binary_download():
     binary_mgr.start()
     return {"ok": True}
+
+
+def _binary_location_payload() -> dict[str, object]:
+    effective = effective_kernel_dir()
+    return {
+        "kernel_dir": str(effective),
+        "default_kernel_dir": str(default_kernel_dir()),
+        "is_default": effective == default_kernel_dir(),
+    }
+
+
+@app.get("/api/binary/location")
+async def get_binary_location():
+    return _binary_location_payload()
+
+
+@app.put("/api/binary/location")
+async def set_binary_location(body: BinaryLocationUpdate):
+    """Change where the kernel is stored/downloaded; empty resets to default.
+
+    Persists across restarts (settings table) and re-points the cloakbrowser
+    package immediately via CLOAKBROWSER_CACHE_DIR, then re-checks the binary
+    at the new location (downloading it there if missing).
+    """
+    if binary_mgr.downloading:
+        raise HTTPException(
+            status_code=409,
+            detail="Kernel download in progress — wait for it to finish before changing the location",
+        )
+    raw = (body.kernel_dir or "").strip()
+    if raw:
+        path = Path(raw)
+        if not path.is_absolute():
+            raise HTTPException(status_code=400, detail="Kernel location must be an absolute path")
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"Cannot create directory: {exc}")
+        db.set_setting(KERNEL_DIR_SETTING, str(path))
+        os.environ[KERNEL_DIR_ENV] = str(path)
+    else:
+        db.set_setting(KERNEL_DIR_SETTING, None)
+        os.environ.pop(KERNEL_DIR_ENV, None)
+    binary_mgr.reset()
+    binary_mgr.start()
+    return _binary_location_payload()
 
 
 # ── Clipboard Relay ──────────────────────────────────────────────────────────

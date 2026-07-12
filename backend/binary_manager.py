@@ -46,6 +46,19 @@ class BinaryManager:
         finally:
             self.downloading = False
 
+    def reset(self) -> None:
+        """Forget readiness so the next start() re-resolves the binary.
+
+        Used when the kernel storage location changes at runtime. The download
+        thread cannot be cancelled, so resetting mid-download is refused —
+        callers must check `downloading` first.
+        """
+        if self.downloading:
+            raise RuntimeError("cannot reset while a download is in flight")
+        self.ready = False
+        self.error = None
+        self._task = None
+
     async def wait_ready(self) -> bool:
         """Await the in-flight download (if any) and report readiness."""
         if self._task is not None:

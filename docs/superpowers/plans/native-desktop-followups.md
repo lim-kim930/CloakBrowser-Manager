@@ -10,7 +10,7 @@
    前置 `cd frontend && pnpm build`；运行 `backend/.venv/Scripts/python.exe -m desktop.app`。
    清单见 `docs/superpowers/plans/2026-07-11-native-desktop-client.md` Task 18 Step 2（窗口、内核横幅、原生弹窗、检测页渲染、关窗回编辑、Stop、CloseModal 三选、记住偏好+托盘还原）。
 2. **Task 20 Step 5 — 打包产物验收**
-   `dist/CloakBrowserManager/CloakBrowserManager.exe` 已构建（uvicorn 动态导入已打包并在盘上确认）；需真机双击运行复跑 Task 18 清单 + 首启下载 + 单实例 + `%APPDATA%\CloakBrowser-Manager` 数据目录。**重点观察后端线程启动路径**（uvicorn 冻结导入是终审指出的风险点，已预防性修复）。
+   `dist/CloakBrowserManager/CloakBrowserManager.exe` 已构建（uvicorn 动态导入已打包并在盘上确认）；需真机双击运行复跑 Task 18 清单 + 首启下载 + 单实例 + 数据目录（现默认为 **exe 同级目录**：`profiles/`、`profiles.db`、`settings.json`；2026-07-12 起不再用 `%APPDATA%`）。**重点观察后端线程启动路径**（uvicorn 冻结导入是终审指出的风险点，已预防性修复）。另验收：Settings 中修改内核存储位置（Browse 选目录 → Save → 重新下载/识别内核）。
 3. **Task 20 Step 6 — Docker/VNC 回归**
    `docker compose up --build` → `/api/status` 的 `display_mode == "vnc"`；Launch 出 noVNC 画面；剪贴板同步可用；**无持续的内核下载横幅**（镜像预下载内核，ready 应瞬时为 true）。
 

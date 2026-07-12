@@ -141,6 +141,44 @@ describe("api.downloadBinary", () => {
   });
 });
 
+// ── binary location ─────────────────────────────────────────────────────────
+
+describe("api.getBinaryLocation", () => {
+  it("GETs the kernel location", async () => {
+    const loc = {
+      kernel_dir: "C:\\Users\\me\\.cloakbrowser",
+      default_kernel_dir: "C:\\Users\\me\\.cloakbrowser",
+      is_default: true,
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(loc));
+    const result = await api.getBinaryLocation();
+    expect(result).toEqual(loc);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/binary/location");
+  });
+});
+
+describe("api.setBinaryLocation", () => {
+  it("PUTs the new kernel dir", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ kernel_dir: "D:\\kernels", default_kernel_dir: "C:\\d", is_default: false }),
+    );
+    await api.setBinaryLocation("D:\\kernels");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/binary/location");
+    expect(options.method).toBe("PUT");
+    expect(JSON.parse(options.body)).toEqual({ kernel_dir: "D:\\kernels" });
+  });
+
+  it("PUTs null to reset to default", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ kernel_dir: "C:\\d", default_kernel_dir: "C:\\d", is_default: true }),
+    );
+    await api.setBinaryLocation(null);
+    const [, options] = mockFetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ kernel_dir: null });
+  });
+});
+
 // ── Error handling ──────────────────────────────────────────────────────────
 
 describe("error handling", () => {

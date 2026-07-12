@@ -80,6 +80,12 @@ export interface BinaryStatus {
   error: string | null;
 }
 
+export interface BinaryLocation {
+  kernel_dir: string;
+  default_kernel_dir: string;
+  is_default: boolean;
+}
+
 class ApiError extends Error {
   constructor(
     public status: number,
@@ -167,4 +173,13 @@ export const api = {
 
   downloadBinary: () =>
     request<{ ok: boolean }>("/api/binary/download", { method: "POST" }),
+
+  getBinaryLocation: () => request<BinaryLocation>("/api/binary/location"),
+
+  // null resets to the package default (~/.cloakbrowser)
+  setBinaryLocation: (kernel_dir: string | null) =>
+    request<BinaryLocation>("/api/binary/location", {
+      method: "PUT",
+      body: JSON.stringify({ kernel_dir }),
+    }),
 };

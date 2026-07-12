@@ -236,3 +236,13 @@ def test_delete_profile_cascades_tags(tmp_db: Path):
             "SELECT * FROM profile_tags WHERE profile_id = ?", (p["id"],)
         ).fetchall()
     assert len(rows) == 0
+
+
+def test_settings_roundtrip(tmp_db: Path):
+    assert db.get_setting("kernel_dir") is None
+    db.set_setting("kernel_dir", r"D:\kernels")
+    assert db.get_setting("kernel_dir") == r"D:\kernels"
+    db.set_setting("kernel_dir", r"E:\other")  # upsert
+    assert db.get_setting("kernel_dir") == r"E:\other"
+    db.set_setting("kernel_dir", None)  # delete
+    assert db.get_setting("kernel_dir") is None

@@ -133,3 +133,9 @@ class ClipboardRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     token: str
+
+
+class BinaryLocationUpdate(BaseModel):
+    """New kernel storage directory; None/empty resets to the package default."""
+
+    kernel_dir: str | None = Field(default=None, max_length=4096)

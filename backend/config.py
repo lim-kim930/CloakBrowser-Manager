@@ -50,6 +50,23 @@ def get_data_dir() -> Path:
     return Path("/data")
 
 
+# Env var honored by the cloakbrowser package: overrides where the kernel
+# (browser binary) cache lives. Read fresh by the package on every resolve,
+# so updating os.environ at runtime re-points subsequent downloads/launches.
+KERNEL_DIR_ENV = "CLOAKBROWSER_CACHE_DIR"
+
+
+def default_kernel_dir() -> Path:
+    """The cloakbrowser package's documented default cache location."""
+    return Path.home() / ".cloakbrowser"
+
+
+def effective_kernel_dir() -> Path:
+    """Where the kernel is stored/downloaded right now (env override or default)."""
+    raw = os.environ.get(KERNEL_DIR_ENV)
+    return Path(raw) if raw else default_kernel_dir()
+
+
 def frontend_dir() -> Path:
     """Locate the built React SPA, in both source and PyInstaller-frozen runs."""
     if getattr(sys, "frozen", False):

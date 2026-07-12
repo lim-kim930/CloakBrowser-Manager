@@ -57,3 +57,35 @@ async def test_start_is_idempotent_when_downloading(monkeypatch):
     m.start()  # should not replace the in-flight task
     assert m._task is first_task
     await m.wait_ready()
+
+
+@pytest.mark.asyncio
+async def test_reset_allows_restart_after_ready(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_ensure():
+        calls["n"] += 1
+        return "/fake/chrome"
+
+    monkeypatch.setattr(sys.modules["cloakbrowser.download"], "ensure_binary", fake_ensure)
+
+    m = BinaryManager()
+    m.start()
+    await m.wait_ready()
+    assert m.ready is True
+
+    m.reset()
+    assert m.status() == {"ready": False, "downloading": False, "error": None}
+
+    m.start()  # would be a no-op without the reset
+    await m.wait_ready()
+    assert m.ready is True
+    assert calls["n"] == 2
+
+
+def test_reset_refused_while_downloading():
+    m = BinaryManager()
+    m.downloading = True
+    with pytest.raises(RuntimeError):
+        m.reset()
+    assert m.downloading is True

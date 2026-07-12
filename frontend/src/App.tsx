@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Lock, PanelLeftClose, PanelLeft } from "lucide-react";
+import { Lock, PanelLeftClose, PanelLeft, Settings as SettingsIcon } from "lucide-react";
 import { useProfiles } from "./hooks/useProfiles";
 import { api, setOnUnauthorized, type ProfileCreateData } from "./lib/api";
 import { ProfileList } from "./components/ProfileList";
@@ -10,6 +10,7 @@ import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { LoginPage } from "./components/LoginPage";
 import { CloseModal } from "./components/CloseModal";
+import { SettingsModal } from "./components/SettingsModal";
 
 type AuthState = "checking" | "required" | "ok" | "error";
 type View = "empty" | "create" | "edit" | "view";
@@ -21,6 +22,8 @@ export default function App() {
   const [binary, setBinary] = useState<{ ready: boolean; downloading: boolean; error: string | null }>(
     { ready: true, downloading: false, error: null },
   );
+  // Bumped to restart the binary poll (e.g. after the kernel location changes)
+  const [binaryPollEpoch, setBinaryPollEpoch] = useState(0);
 
   useEffect(() => {
     setOnUnauthorized(() => setAuthState("required"));
@@ -62,7 +65,7 @@ export default function App() {
     };
     poll();
     return () => { cancelled = true; };
-  }, []);
+  }, [binaryPollEpoch]);
 
   if (authState === "checking") {
     return (
@@ -105,6 +108,7 @@ export default function App() {
       authRequired={authRequired}
       displayMode={displayMode}
       binary={binary}
+      onBinaryRecheck={() => setBinaryPollEpoch((e) => e + 1)}
       onLogout={async () => {
         await api.logout();
         setAuthState("required");
@@ -117,15 +121,17 @@ interface AppContentProps {
   authRequired: boolean;
   displayMode: "native" | "vnc";
   binary: { ready: boolean; downloading: boolean; error: string | null };
+  onBinaryRecheck: () => void;
   onLogout: () => void;
 }
 
-function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentProps) {
+function AppContent({ authRequired, displayMode, binary, onBinaryRecheck, onLogout }: AppContentProps) {
   const { profiles, loading, error, create, update, remove, launch, stop } = useProfiles();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const selected = profiles.find((p) => p.id === selectedId) ?? null;
 
@@ -246,6 +252,15 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
                 onStop={handleStop}
               />
             )}
+            {displayMode === "native" && (
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                title="Settings"
+              >
+                <SettingsIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
             {authRequired && (
               <button
                 onClick={onLogout}
@@ -336,6 +351,11 @@ function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentP
       </div>
 
       <CloseModal open={closeModalOpen} onChoice={handleCloseChoice} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onKernelDirChanged={onBinaryRecheck}
+      />
     </div>
   );
 }
