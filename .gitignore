@@ -33,3 +33,8 @@ debug
 frontend/pnpm-lock.yaml
 frontend/pnpm-workspace.yaml
 frontend/tsconfig.tsbuildinfo
+
+# Desktop-client data when run from source (DATA_DIR defaults to the repo root)
+/profiles/
+/profiles.db*
+/settings.json

@@ -4,7 +4,9 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import sys
 import threading
+from pathlib import Path
 
 import webview
 
@@ -13,6 +15,20 @@ from desktop.api_bridge import ApiBridge
 from desktop.controller import Controller
 
 logger = logging.getLogger("cloakbrowser.desktop")
+
+
+def app_root() -> Path:
+    """The client's install root: the exe's folder when frozen, repo root from source."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _apply_env_defaults() -> None:
+    """Set native-mode defaults; explicit env vars always win (setdefault)."""
+    os.environ.setdefault("USE_VNC", "0")
+    # Keep data (profiles, DB, settings.json) next to the client instead of APPDATA.
+    os.environ.setdefault("DATA_DIR", str(app_root()))
 
 
 def _message_box(text: str, title: str = "CloakBrowser Manager") -> None:
@@ -25,8 +41,7 @@ def _message_box(text: str, title: str = "CloakBrowser Manager") -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
 
-    # Native mode unless the user explicitly overrode it.
-    os.environ.setdefault("USE_VNC", "0")
+    _apply_env_defaults()
     port = int(os.environ.get("CLOAK_PORT", "8977"))
 
     if server.port_in_use(port):
