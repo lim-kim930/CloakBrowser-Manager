@@ -7,6 +7,7 @@ declare global {
       api?: {
         on_close_choice?: (choice: string, remember: boolean) => void;
         pick_folder?: () => Promise<string | null>;
+        pick_file?: (fileTypes?: string[]) => Promise<string | null>;
       };
     };
   }

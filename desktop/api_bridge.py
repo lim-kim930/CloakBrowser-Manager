@@ -30,3 +30,21 @@ class ApiBridge:
         if not result:
             return None
         return result[0] if isinstance(result, (list, tuple)) else str(result)
+
+    def pick_file(self, file_types: list[str] | None = None) -> str | None:
+        """Open a native file-picker dialog; return the chosen path or None.
+
+        file_types uses pywebview's format, e.g. ["Zip archive (*.zip)"].
+        """
+        window = self._c.window
+        if window is None:
+            return None
+        try:
+            kwargs = {"file_types": tuple(file_types)} if file_types else {}
+            result = window.create_file_dialog(webview.OPEN_DIALOG, **kwargs)
+        except Exception as exc:  # noqa: BLE001 — never crash the JS bridge
+            logger.warning("file dialog failed: %s", exc)
+            return None
+        if not result:
+            return None
+        return result[0] if isinstance(result, (list, tuple)) else str(result)

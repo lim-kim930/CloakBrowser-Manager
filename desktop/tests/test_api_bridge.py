@@ -35,3 +35,35 @@ def test_pick_folder_dialog_error_returns_none():
     window = MagicMock()
     window.create_file_dialog.side_effect = RuntimeError("no GUI")
     assert _bridge(window).pick_folder() is None
+
+
+def test_pick_file_returns_first_selection():
+    window = MagicMock()
+    window.create_file_dialog.return_value = (r"C:\Downloads\kernel.zip",)
+    assert _bridge(window).pick_file() == r"C:\Downloads\kernel.zip"
+    window.create_file_dialog.assert_called_once_with(webview.OPEN_DIALOG)
+
+
+def test_pick_file_forwards_file_types():
+    window = MagicMock()
+    window.create_file_dialog.return_value = (r"C:\Downloads\kernel.zip",)
+    _bridge(window).pick_file(["Zip archive (*.zip)"])
+    window.create_file_dialog.assert_called_once_with(
+        webview.OPEN_DIALOG, file_types=("Zip archive (*.zip)",)
+    )
+
+
+def test_pick_file_cancelled_returns_none():
+    window = MagicMock()
+    window.create_file_dialog.return_value = None
+    assert _bridge(window).pick_file() is None
+
+
+def test_pick_file_without_window_returns_none():
+    assert _bridge(None).pick_file() is None
+
+
+def test_pick_file_dialog_error_returns_none():
+    window = MagicMock()
+    window.create_file_dialog.side_effect = RuntimeError("no GUI")
+    assert _bridge(window).pick_file() is None
