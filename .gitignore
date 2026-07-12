@@ -24,3 +24,8 @@ CLAUDE.md
 publish-docker.sh
 .beads
 debug
+
+# PyInstaller
+/build/
+/dist/
+*.spec.bak
