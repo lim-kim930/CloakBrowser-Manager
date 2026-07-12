@@ -57,6 +57,7 @@ export default function App() {
         if (!cancelled && !b.ready) setTimeout(poll, 2000);
       } catch (err) {
         console.warn("[binary] status failed:", err);
+        if (!cancelled) setTimeout(poll, 2000);
       }
     };
     poll();

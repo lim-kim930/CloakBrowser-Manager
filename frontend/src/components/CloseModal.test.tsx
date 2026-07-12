@@ -23,4 +23,21 @@ describe("CloseModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /tray/i }));
     expect(onChoice).toHaveBeenCalledWith("tray", false);
   });
+
+  it("cancel reports remember=false even when the box is checked", () => {
+    const onChoice = vi.fn();
+    render(<CloseModal open onChoice={onChoice} />);
+    fireEvent.click(screen.getByLabelText(/remember/i));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onChoice).toHaveBeenCalledWith("cancel", false);
+  });
+
+  it("resets the remember checkbox when reopened", () => {
+    const { rerender } = render(<CloseModal open onChoice={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText(/remember/i));
+    expect(screen.getByLabelText(/remember/i)).toBeChecked();
+    rerender(<CloseModal open={false} onChoice={vi.fn()} />);
+    rerender(<CloseModal open onChoice={vi.fn()} />);
+    expect(screen.getByLabelText(/remember/i)).not.toBeChecked();
+  });
 });

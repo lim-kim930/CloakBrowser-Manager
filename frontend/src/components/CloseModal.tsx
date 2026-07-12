@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface CloseModalProps {
   open: boolean;
@@ -7,6 +7,9 @@ interface CloseModalProps {
 
 export function CloseModal({ open, onChoice }: CloseModalProps) {
   const [remember, setRemember] = useState(false);
+  useEffect(() => {
+    if (open) setRemember(false);
+  }, [open]);
   if (!open) return null;
 
   return (
