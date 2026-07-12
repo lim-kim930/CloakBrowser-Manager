@@ -12,8 +12,10 @@ datas = [(os.path.join(ROOT, "frontend", "dist"), "frontend/dist")]
 binaries = []
 hiddenimports = ["backend.main", "desktop.app"]
 
-# Bundle cloakbrowser + webview + pystray data/backends
-for pkg in ("cloakbrowser", "webview", "pystray"):
+# Bundle cloakbrowser + webview + pystray data/backends.
+# uvicorn is included because it selects its loop/http/lifespan implementations
+# via string-based import_module() that PyInstaller's static analysis misses.
+for pkg in ("cloakbrowser", "webview", "pystray", "uvicorn"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
