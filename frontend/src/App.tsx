@@ -5,6 +5,7 @@ import { api, setOnUnauthorized, type ProfileCreateData } from "./lib/api";
 import { ProfileList } from "./components/ProfileList";
 import { ProfileForm } from "./components/ProfileForm";
 import { ProfileViewer } from "./components/ProfileViewer";
+import { RunningPanel } from "./components/RunningPanel";
 import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { LoginPage } from "./components/LoginPage";
@@ -15,6 +16,10 @@ type View = "empty" | "create" | "edit" | "view";
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [authRequired, setAuthRequired] = useState(false);
+  const [displayMode, setDisplayMode] = useState<"native" | "vnc">("vnc");
+  const [binary, setBinary] = useState<{ ready: boolean; downloading: boolean; error: string | null }>(
+    { ready: true, downloading: false, error: null },
+  );
 
   useEffect(() => {
     setOnUnauthorized(() => setAuthState("required"));
@@ -34,6 +39,27 @@ export default function App() {
       });
 
     return () => setOnUnauthorized(null);
+  }, []);
+
+  useEffect(() => {
+    api.getStatus()
+      .then((s) => setDisplayMode(s.display_mode))
+      .catch((err) => console.warn("[status] failed:", err));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const b = await api.getBinaryStatus();
+        if (!cancelled) setBinary(b);
+        if (!cancelled && !b.ready) setTimeout(poll, 2000);
+      } catch (err) {
+        console.warn("[binary] status failed:", err);
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
   }, []);
 
   if (authState === "checking") {
@@ -75,6 +101,8 @@ export default function App() {
   return (
     <AppContent
       authRequired={authRequired}
+      displayMode={displayMode}
+      binary={binary}
       onLogout={async () => {
         await api.logout();
         setAuthState("required");
@@ -85,16 +113,24 @@ export default function App() {
 
 interface AppContentProps {
   authRequired: boolean;
+  displayMode: "native" | "vnc";
+  binary: { ready: boolean; downloading: boolean; error: string | null };
   onLogout: () => void;
 }
 
-function AppContent({ authRequired, onLogout }: AppContentProps) {
+function AppContent({ authRequired, displayMode, binary, onLogout }: AppContentProps) {
   const { profiles, loading, error, create, update, remove, launch, stop } = useProfiles();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const selected = profiles.find((p) => p.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (view === "view" && selected && selected.status !== "running") {
+      setView("edit");
+    }
+  }, [view, selected]);
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
@@ -212,6 +248,24 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
           </div>
         )}
 
+        {!binary.ready && (
+          <div className="px-4 py-2 bg-amber-600/15 border-b border-amber-600/30 text-amber-300 text-sm flex items-center justify-between">
+            <span>
+              {binary.error
+                ? `Browser kernel download failed: ${binary.error}`
+                : "Downloading browser kernel… Launch is disabled until this finishes."}
+            </span>
+            {binary.error && (
+              <button
+                onClick={() => api.downloadBinary().catch(() => {})}
+                className="text-xs underline hover:text-amber-200"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
           {view === "empty" && (
@@ -243,13 +297,21 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
           )}
 
           {view === "view" && selected && selected.status === "running" && (
-            <ProfileViewer
-              key={selected.id}
-              profileId={selected.id}
-              cdpUrl={selected.cdp_url}
-              clipboardSync={selected.clipboard_sync}
-              onDisconnect={handleVncDisconnect}
-            />
+            displayMode === "vnc" ? (
+              <ProfileViewer
+                key={selected.id}
+                profileId={selected.id}
+                cdpUrl={selected.cdp_url}
+                clipboardSync={selected.clipboard_sync}
+                onDisconnect={handleVncDisconnect}
+              />
+            ) : (
+              <RunningPanel
+                key={selected.id}
+                profileId={selected.id}
+                cdpUrl={selected.cdp_url}
+              />
+            )
           )}
         </div>
       </div>
