@@ -179,6 +179,84 @@ describe("api.setBinaryLocation", () => {
   });
 });
 
+// ── kernels ─────────────────────────────────────────────────────────────────
+
+const emptyKernelList = { kernels: [], default_version: null, kernel_dir: "C:\\k" };
+
+describe("api.listKernels", () => {
+  it("GETs the kernel list", async () => {
+    const list = {
+      kernels: [
+        {
+          version: "146.0.7680.177.5",
+          path: "C:\\k\\chromium-146.0.7680.177.5",
+          size: 123,
+          pro: false,
+          in_use: false,
+        },
+      ],
+      default_version: null,
+      kernel_dir: "C:\\k",
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(list));
+    const result = await api.listKernels();
+    expect(result).toEqual(list);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/kernels");
+  });
+});
+
+describe("api.importKernel", () => {
+  it("POSTs source path and version", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(emptyKernelList));
+    await api.importKernel("D:\\Downloads\\kernel.zip", "146.0.7680.177.5");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/kernels/import");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({
+      source_path: "D:\\Downloads\\kernel.zip",
+      version: "146.0.7680.177.5",
+    });
+  });
+
+  it("sends null version when omitted", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(emptyKernelList));
+    await api.importKernel("D:\\Downloads\\chromium-1.2.3.4");
+    const [, options] = mockFetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({
+      source_path: "D:\\Downloads\\chromium-1.2.3.4",
+      version: null,
+    });
+  });
+});
+
+describe("api.deleteKernel", () => {
+  it("DELETEs the version (URL-encoded)", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(emptyKernelList));
+    await api.deleteKernel("146.0.7680.177.5");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/kernels/146.0.7680.177.5");
+    expect(options.method).toBe("DELETE");
+  });
+});
+
+describe("api.setDefaultKernel", () => {
+  it("PUTs the version", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(emptyKernelList));
+    await api.setDefaultKernel("146.0.7680.177.5");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/kernels/default");
+    expect(options.method).toBe("PUT");
+    expect(JSON.parse(options.body)).toEqual({ version: "146.0.7680.177.5" });
+  });
+
+  it("PUTs null to clear", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(emptyKernelList));
+    await api.setDefaultKernel(null);
+    const [, options] = mockFetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ version: null });
+  });
+});
+
 // ── Error handling ──────────────────────────────────────────────────────────
 
 describe("error handling", () => {

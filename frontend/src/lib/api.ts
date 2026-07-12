@@ -25,6 +25,7 @@ export interface Profile {
   color_scheme: string | null;
   launch_args: string[];
   notes: string | null;
+  kernel_version: string | null;
   user_data_dir: string;
   created_at: string;
   updated_at: string;
@@ -56,6 +57,7 @@ export interface ProfileCreateData {
   color_scheme?: string | null;
   launch_args?: string[];
   notes?: string | null;
+  kernel_version?: string | null;
   tags?: { tag: string; color: string | null }[];
 }
 
@@ -84,6 +86,20 @@ export interface BinaryLocation {
   kernel_dir: string;
   default_kernel_dir: string;
   is_default: boolean;
+}
+
+export interface Kernel {
+  version: string;
+  path: string;
+  size: number | null;
+  pro: boolean;
+  in_use: boolean;
+}
+
+export interface KernelList {
+  kernels: Kernel[];
+  default_version: string | null;
+  kernel_dir: string;
 }
 
 class ApiError extends Error {
@@ -181,5 +197,27 @@ export const api = {
     request<BinaryLocation>("/api/binary/location", {
       method: "PUT",
       body: JSON.stringify({ kernel_dir }),
+    }),
+
+  listKernels: () => request<KernelList>("/api/kernels"),
+
+  // source_path: a downloaded .zip or an extracted kernel folder on this machine.
+  // version is required unless the folder name already encodes it (chromium-<version>).
+  importKernel: (source_path: string, version?: string | null) =>
+    request<KernelList>("/api/kernels/import", {
+      method: "POST",
+      body: JSON.stringify({ source_path, version: version || null }),
+    }),
+
+  deleteKernel: (version: string) =>
+    request<KernelList>(`/api/kernels/${encodeURIComponent(version)}`, {
+      method: "DELETE",
+    }),
+
+  // null clears the default (newest installed wins)
+  setDefaultKernel: (version: string | null) =>
+    request<KernelList>("/api/kernels/default", {
+      method: "PUT",
+      body: JSON.stringify({ version }),
     }),
 };
