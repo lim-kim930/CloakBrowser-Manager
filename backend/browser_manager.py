@@ -15,6 +15,7 @@ from typing import Any
 from cloakbrowser import launch_persistent_context_async
 
 from .config import use_vnc
+from .kernel_manager import kernel_installed, resolve_kernel_version
 from .vnc_manager import VNCManager
 
 logger = logging.getLogger("cloakbrowser.manager.browser")
@@ -154,6 +155,7 @@ class RunningProfile:
     display: int | None
     ws_port: int | None
     cdp_port: int
+    kernel_version: str | None = None  # resolved pin this instance launched with
 
 
 class BrowserManager:
@@ -169,12 +171,16 @@ class BrowserManager:
         """Launch a browser instance for the given profile."""
         profile_id = profile["id"]
 
+        native = not use_vnc()
+
+        # Resolve the kernel pin up front (before any allocation) so a missing
+        # kernel fails fast with an actionable error and nothing to clean up.
+        kernel_version = self._resolve_launch_kernel(profile, native)
+
         async with self._lock:
             if profile_id in self.running or profile_id in self._launching:
                 raise RuntimeError(f"Profile {profile_id} is already running")
             self._launching.add(profile_id)
-
-        native = not use_vnc()
 
         display: int | None = None
         ws_port: int | None = None
@@ -235,6 +241,10 @@ class BrowserManager:
                 color_scheme=profile.get("color_scheme") or None,
                 user_agent=profile.get("user_agent") or None,
             )
+            if kernel_version:
+                # Pin an already-installed kernel: the cloakbrowser package
+                # resolves it straight from disk, no download, no update check.
+                launch_kwargs["browser_version"] = kernel_version
             if native:
                 # Native window: real desktop display, no forced viewport.
                 launch_kwargs["no_viewport"] = True
@@ -277,6 +287,7 @@ class BrowserManager:
                 display=display,
                 ws_port=ws_port,
                 cdp_port=cdp_port,
+                kernel_version=kernel_version,
             )
 
             # Auto-cleanup if browser crashes or user closes Chrome via VNC
@@ -380,6 +391,31 @@ class BrowserManager:
                     profile["name"], profile["id"], exc,
                 )
         logger.info("Auto-launch complete: %d running", len(self.running))
+
+    def _resolve_launch_kernel(self, profile: dict[str, Any], native: bool) -> str | None:
+        """Pick the kernel version pin for this launch; None means unpinned.
+
+        Native always pins a verified installed version (so the cloakbrowser
+        package resolves it from disk and can never download); no kernel at
+        all raises. VNC pins only an explicit profile choice — pre-checked so
+        a missing version fails fast instead of triggering a mid-request
+        download — and otherwise stays on today's unpinned path.
+        """
+        if native:
+            version = resolve_kernel_version(profile.get("kernel_version"))
+            if version is None:
+                raise ValueError(
+                    "No browser kernel is installed. "
+                    "Open Settings → Browser kernels to import one."
+                )
+            return version
+        pin = (profile.get("kernel_version") or "").strip() or None
+        if pin and not kernel_installed(pin):
+            raise ValueError(
+                f"Kernel {pin} is not installed; import it or clear the "
+                "profile's kernel selection."
+            )
+        return pin
 
     def _allocate_cdp_port(self) -> int:
         """Find a free CDP port using a rotating counter to avoid TIME_WAIT collisions."""
