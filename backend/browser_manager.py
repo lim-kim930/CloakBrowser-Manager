@@ -237,11 +237,6 @@ class BrowserManager:
             )
             if native:
                 # Native window: real desktop display, no forced viewport.
-                # 预检回退：若 no_viewport 不被支持，改为
-                #   launch_kwargs["viewport"] = {
-                #       "width": profile.get("screen_width", 1920),
-                #       "height": profile.get("screen_height", 1080),
-                #   }
                 launch_kwargs["no_viewport"] = True
             else:
                 # VNC: browser fills the virtual display; -133 compensates UI chrome.

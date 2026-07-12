@@ -8,7 +8,6 @@ import random
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any
 
 from .config import get_data_dir

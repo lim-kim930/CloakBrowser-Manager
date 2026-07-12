@@ -29,3 +29,8 @@ debug
 /build/
 /dist/
 *.spec.bak
+
+# Local build / package-manager artifacts (repo uses npm/package-lock.json)
+frontend/pnpm-lock.yaml
+frontend/pnpm-workspace.yaml
+frontend/tsconfig.tsbuildinfo

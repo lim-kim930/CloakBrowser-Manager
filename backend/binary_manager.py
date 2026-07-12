@@ -39,7 +39,6 @@ class BinaryManager:
 
             await asyncio.to_thread(ensure_binary)
             self.ready = True
-            self.error = None
             logger.info("CloakBrowser binary is ready")
         except Exception as exc:  # noqa: BLE001 — surface any download failure to the UI
             self.error = str(exc)
