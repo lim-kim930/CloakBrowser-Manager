@@ -16,12 +16,48 @@ from desktop.controller import Controller
 
 logger = logging.getLogger("cloakbrowser.desktop")
 
+_DEFAULT_SIZE = (1280, 800)
+
 
 def app_root() -> Path:
     """The client's install root: the exe's folder when frozen, repo root from source."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
+
+
+def _window_kwargs(settings: dict) -> dict:
+    """Geometry kwargs for create_window from the remembered window state.
+
+    No remembered state → default size, centered by the OS (first-run behavior).
+    """
+    kwargs: dict = {"width": _DEFAULT_SIZE[0], "height": _DEFAULT_SIZE[1]}
+    win = settings.get("window") or {}
+    if {"x", "y", "width", "height"} <= win.keys():
+        kwargs.update(x=win["x"], y=win["y"], width=win["width"], height=win["height"])
+    if win.get("maximized"):
+        kwargs["maximized"] = True
+    return kwargs
+
+
+def _keep_window_visible(window) -> None:
+    """Move a remembered window back on-screen if its monitor is gone."""
+    try:
+        screens = webview.screens
+        x, y, width, height = window.x, window.y, window.width, window.height
+        for s in screens:
+            overlap_w = min(x + width, s.x + s.width) - max(x, s.x)
+            overlap_h = min(y + height, s.y + s.height) - max(y, s.y)
+            # Enough of the title bar to see and grab the window
+            if overlap_w >= 100 and overlap_h >= 50:
+                return
+        primary = screens[0]
+        window.move(
+            primary.x + max((primary.width - width) // 2, 0),
+            primary.y + max((primary.height - height) // 2, 0),
+        )
+    except Exception as exc:  # noqa: BLE001 - cosmetic safeguard only
+        logger.warning("screen-visibility check failed: %s", exc)
 
 
 def _apply_env_defaults() -> None:
@@ -61,11 +97,15 @@ def main() -> None:
         "CloakBrowser Manager",
         f"http://127.0.0.1:{port}",
         js_api=bridge,
-        width=1280,
-        height=800,
+        **_window_kwargs(controller.settings),
     )
     controller.window = window
     window.events.closing += controller.on_closing
+    window.events.maximized += controller.on_win_maximized
+    window.events.minimized += controller.on_win_minimized
+    window.events.restored += controller.on_win_restored
+    if controller.settings.get("window"):
+        window.events.shown += lambda: _keep_window_visible(window)
 
     tray_icon = tray.create_tray(controller)
     threading.Thread(target=tray_icon.run, daemon=True, name="tray").start()
