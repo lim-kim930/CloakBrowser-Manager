@@ -281,21 +281,36 @@ function AppContent({ authRequired, displayMode, binary, onBinaryRecheck, onLogo
         )}
 
         {!binary.ready && (
-          <div className="px-4 py-2 bg-amber-600/15 border-b border-amber-600/30 text-amber-300 text-sm flex items-center justify-between">
-            <span>
-              {binary.error
-                ? `Browser kernel download failed: ${binary.error}`
-                : "Downloading browser kernel… Launch is disabled until this finishes."}
-            </span>
-            {binary.error && (
+          displayMode === "native" ? (
+            <div className="px-4 py-2 bg-amber-600/15 border-b border-amber-600/30 text-amber-300 text-sm flex items-center justify-between">
+              <span>
+                No browser kernel installed — open Settings to add one. Launch is
+                disabled until then.
+              </span>
               <button
-                onClick={() => api.downloadBinary().catch(() => {})}
+                onClick={() => setSettingsOpen(true)}
                 className="text-xs underline hover:text-amber-200"
               >
-                Retry
+                Open Settings
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="px-4 py-2 bg-amber-600/15 border-b border-amber-600/30 text-amber-300 text-sm flex items-center justify-between">
+              <span>
+                {binary.error
+                  ? `Browser kernel download failed: ${binary.error}`
+                  : "Downloading browser kernel… Launch is disabled until this finishes."}
+              </span>
+              {binary.error && (
+                <button
+                  onClick={() => api.downloadBinary().catch(() => {})}
+                  className="text-xs underline hover:text-amber-200"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )
         )}
 
         {/* Content */}
