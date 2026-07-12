@@ -1,6 +1,7 @@
 import { Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Profile, ProfileCreateData } from "../lib/api";
+import { api } from "../lib/api";
+import type { Kernel, Profile, ProfileCreateData } from "../lib/api";
 
 interface ProfileFormProps {
   profile: Profile | null; // null = create mode
@@ -76,6 +77,19 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel, displayMode =
   const [tagInput, setTagInput] = useState("");
   const [tagColor, setTagColor] = useState<string | null>("#6366f1");
   const [launchArgInput, setLaunchArgInput] = useState("");
+  const [kernels, setKernels] = useState<Kernel[]>([]);
+  const [defaultKernel, setDefaultKernel] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Populate the kernel selector; on failure the form still works (Default only)
+    api
+      .listKernels()
+      .then((list) => {
+        setKernels(list.kernels);
+        setDefaultKernel(list.default_version);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -101,6 +115,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel, displayMode =
         color_scheme: profile.color_scheme,
         launch_args: profile.launch_args ?? [],
         notes: profile.notes,
+        kernel_version: profile.kernel_version ?? null,
         tags: profile.tags ?? [],
       });
     }
@@ -147,6 +162,14 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel, displayMode =
   const currentResolution = Object.entries(RESOLUTION_PRESETS).find(
     ([, v]) => v.width === form.screen_width && v.height === form.screen_height,
   )?.[0] ?? "custom";
+
+  // What "Default" resolves to: the chosen default, else the newest installed
+  const resolvedDefaultKernel = defaultKernel ?? kernels[0]?.version ?? null;
+  // A pinned version that is no longer installed stays visible but unselectable
+  const missingPinnedKernel =
+    form.kernel_version && !kernels.some((k) => k.version === form.kernel_version)
+      ? form.kernel_version
+      : null;
 
   const addTag = () => {
     const tag = tagInput.trim();
@@ -271,6 +294,29 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel, displayMode =
                   </svg>
                 </button>
               </div>
+            </div>
+            <div className="col-span-2">
+              <label className="label" htmlFor="kernel-version-select">Browser Kernel</label>
+              <select
+                id="kernel-version-select"
+                className="input"
+                value={form.kernel_version ?? ""}
+                onChange={(e) => set("kernel_version", e.target.value || null)}
+              >
+                <option value="">
+                  {resolvedDefaultKernel
+                    ? `Default (${resolvedDefaultKernel})`
+                    : "Default (no kernel installed)"}
+                </option>
+                {kernels.map((k) => (
+                  <option key={k.version} value={k.version}>{k.version}</option>
+                ))}
+                {missingPinnedKernel && (
+                  <option value={missingPinnedKernel} disabled>
+                    {missingPinnedKernel} (not installed)
+                  </option>
+                )}
+              </select>
             </div>
           </div>
         </section>
