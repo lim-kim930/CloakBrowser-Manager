@@ -117,10 +117,6 @@ class ClipboardRequest(BaseModel):
     text: str = Field(max_length=1_048_576)  # 1MB max
 
 
-class LoginRequest(BaseModel):
-    token: str
-
-
 class BinaryStatus(BaseModel):
     state: Literal["downloading", "ready", "error"]
     version: str | None = None

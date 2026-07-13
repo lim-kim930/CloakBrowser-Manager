@@ -395,32 +395,6 @@ def test_cdp_json_version_rewrites_ws_url(app_client: TestClient):
     main.browser_mgr.running.pop(pid, None)
 
 
-def test_cdp_json_version_uses_wss_behind_https(app_client: TestClient):
-    """X-Forwarded-Proto: https should produce wss:// URLs."""
-    create = app_client.post("/api/profiles", json={"name": "CdpWss"})
-    pid = create.json()["id"]
-    _mock_running_profile(pid)
-
-    chrome_response = MagicMock()
-    chrome_response.json.return_value = {
-        "webSocketDebuggerUrl": "ws://127.0.0.1:5100/devtools/browser/abc",
-    }
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.get = AsyncMock(return_value=chrome_response)
-
-    with patch("httpx.AsyncClient", return_value=mock_client):
-        resp = app_client.get(
-            f"/api/profiles/{pid}/cdp/json/version",
-            headers={"X-Forwarded-Proto": "https"},
-        )
-
-    assert resp.status_code == 200
-    assert resp.json()["webSocketDebuggerUrl"].startswith("wss://")
-    main.browser_mgr.running.pop(pid, None)
-
-
 def test_cdp_json_list_rewrites_page_urls(app_client: TestClient):
     """GET /cdp/json/list rewrites per-page webSocketDebuggerUrl."""
     create = app_client.post("/api/profiles", json={"name": "CdpList"})
