@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import socket
 import time
 from dataclasses import dataclass
@@ -13,8 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from cloakbrowser import launch_persistent_context_async
-
-from .vnc_manager import VNCManager
 
 logger = logging.getLogger("cloakbrowser.manager.browser")
 
@@ -150,8 +147,6 @@ CDP_PORT_RANGE = 100  # cycle through 5100-5199 to avoid TIME_WAIT collisions
 class RunningProfile:
     profile_id: str
     context: Any  # Playwright BrowserContext
-    display: int
-    ws_port: int
     cdp_port: int
 
 
@@ -159,7 +154,6 @@ class BrowserManager:
     def __init__(self):
         self.running: dict[str, RunningProfile] = {}
         self._launching: set[str] = set()  # profile IDs currently being launched
-        self.vnc = VNCManager()
         self._lock = asyncio.Lock()
         self._next_cdp_port = BASE_CDP_PORT
         self._auto_launch_task: asyncio.Task | None = None
@@ -173,33 +167,16 @@ class BrowserManager:
                 raise RuntimeError(f"Profile {profile_id} is already running")
             self._launching.add(profile_id)
 
-        display, ws_port = await self.vnc.allocate()
-
         try:
             cdp_port = self._allocate_cdp_port()
-        except ValueError:
-            async with self._lock:
-                self._launching.discard(profile_id)
-            await self.vnc.stop_vnc(display)
-            raise
 
-        # Clean stale Chromium lock files (left by previous container crashes)
-        user_data_dir = Path(profile["user_data_dir"])
-        for lock_file in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
-            lock_path = user_data_dir / lock_file
-            lock_path.unlink(missing_ok=True)
+            # Clean stale Chromium lock files (left by previous crashes)
+            user_data_dir = Path(profile["user_data_dir"])
+            for lock_file in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+                (user_data_dir / lock_file).unlink(missing_ok=True)
 
-        # Set up bookmarks and search engine on first launch
-        _init_profile_defaults(user_data_dir)
-
-        try:
-            # Start KasmVNC on the allocated display
-            await self.vnc.start_vnc(
-                display,
-                ws_port,
-                width=profile.get("screen_width", 1920),
-                height=profile.get("screen_height", 1080),
-            )
+            # Set up bookmarks and search engine on first launch
+            _init_profile_defaults(user_data_dir)
 
             # Build fingerprint args from profile settings
             extra_args = self._build_fingerprint_args(profile)
@@ -212,8 +189,8 @@ class BrowserManager:
             if proxy:
                 _validate_proxy(proxy)
 
-            # Launch CloakBrowser on that display
-            # DISPLAY is passed via env kwarg to avoid process-wide os.environ mutation
+            # Headed desktop launch: no viewport override — cloakbrowser defaults
+            # to no_viewport so outerWidth >= innerWidth stays consistent.
             context = await launch_persistent_context_async(
                 user_data_dir=profile["user_data_dir"],
                 headless=bool(profile.get("headless", False)),
@@ -226,45 +203,13 @@ class BrowserManager:
                 geoip=bool(profile.get("geoip", False)),
                 color_scheme=profile.get("color_scheme") or None,
                 user_agent=profile.get("user_agent") or None,
-                viewport={
-                    "width": profile.get("screen_width", 1920),
-                    "height": profile.get("screen_height", 1080) - 133,
-                },
-                env={**os.environ, "DISPLAY": f":{display}"},
             )
-
-            # Inject clipboard listener: captures copied text on every page
-            # so the GET /clipboard endpoint can read it via page.evaluate()
-            _clipboard_init_js = """
-                window.__clipboardText = '';
-                document.addEventListener('copy', () => {
-                    const sel = window.getSelection();
-                    if (sel) window.__clipboardText = sel.toString();
-                });
-                document.addEventListener('keydown', (e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !e.altKey && !e.shiftKey) {
-                        const sel = window.getSelection();
-                        if (sel && sel.toString()) window.__clipboardText = sel.toString();
-                    }
-                });
-            """
-            await context.add_init_script(_clipboard_init_js)
-            # Also inject into already-open pages (about:blank created before init_script)
-            for p in context.pages:
-                try:
-                    await p.evaluate(_clipboard_init_js)
-                except Exception as exc:
-                    logger.debug("Clipboard init failed on existing page: %s", exc)
 
             running = RunningProfile(
-                profile_id=profile_id,
-                context=context,
-                display=display,
-                ws_port=ws_port,
-                cdp_port=cdp_port,
+                profile_id=profile_id, context=context, cdp_port=cdp_port,
             )
 
-            # Auto-cleanup if browser crashes or user closes Chrome via VNC
+            # Auto-cleanup if the browser crashes or the user closes the window
             context.on("close", lambda: asyncio.ensure_future(
                 self._on_browser_closed(profile_id)
             ))
@@ -273,30 +218,23 @@ class BrowserManager:
                 self.running[profile_id] = running
                 self._launching.discard(profile_id)
 
-            logger.info(
-                "Launched profile %s on display :%d (ws_port=%d, cdp_port=%d)",
-                profile_id, display, ws_port, cdp_port,
-            )
-
+            logger.info("Launched profile %s (cdp_port=%d)", profile_id, cdp_port)
             return running
 
         except BaseException:
             async with self._lock:
                 self._launching.discard(profile_id)
-            await self.vnc.stop_vnc(display)
             raise
 
     async def _on_browser_closed(self, profile_id: str):
-        """Called when browser exits (crash, user closed via VNC, or stop())."""
+        """Called when the browser exits (crash, user closed the window, or stop())."""
         async with self._lock:
             running = self.running.pop(profile_id, None)
-
         if running:
-            logger.info("Browser closed for profile %s, cleaning up", profile_id)
-            await self.vnc.stop_vnc(running.display)
+            logger.info("Browser closed for profile %s", profile_id)
 
     async def stop(self, profile_id: str):
-        """Stop a running browser instance."""
+        """Stop a running browser instance (graceful — session data is flushed)."""
         # Pop before close so _on_browser_closed() finds nothing to clean up
         async with self._lock:
             running = self.running.pop(profile_id, None)
@@ -305,39 +243,23 @@ class BrowserManager:
             return
 
         logger.info("Stopping profile %s", profile_id)
-
         try:
             await running.context.close()
         except Exception as exc:
             logger.warning("Error closing context for %s: %s", profile_id, exc)
 
-        await self.vnc.stop_vnc(running.display)
-
     def get_status(self, profile_id: str) -> dict[str, Any]:
         """Get running status for a profile."""
-        running = self.running.get(profile_id)
-        if running:
-            return {
-                "status": "running",
-                "vnc_ws_port": running.ws_port,
-                "display": f":{running.display}",
-                "cdp_url": f"/api/profiles/{profile_id}/cdp",
-            }
-        return {"status": "stopped", "vnc_ws_port": None, "display": None, "cdp_url": None}
+        if profile_id in self.running:
+            return {"status": "running", "cdp_url": f"/api/profiles/{profile_id}/cdp"}
+        return {"status": "stopped", "cdp_url": None}
 
     async def cleanup_all(self):
         """Stop all running profiles. Called on shutdown."""
         async with self._lock:
             profile_ids = list(self.running.keys())
-
         for pid in profile_ids:
             await self.stop(pid)
-
-        await self.vnc.cleanup_all()
-
-    async def cleanup_stale(self):
-        """Kill orphan processes from previous container runs."""
-        await self.vnc.cleanup_stale()
 
     async def auto_launch_all(self):
         """Launch all profiles with auto_launch=True. Called on startup."""
@@ -381,7 +303,6 @@ class BrowserManager:
         args: list[str] = [
             "--disable-infobars",
             "--test-type",  # suppress "unsupported flag: --no-sandbox" bad flags warning
-            "--use-angle=swiftshader",  # software GL for VNC (no GPU in container)
         ]
 
         seed = profile.get("fingerprint_seed")

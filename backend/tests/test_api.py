@@ -101,9 +101,8 @@ def test_delete_profile_stops_running(app_client: TestClient):
 
     # Inject mock running profile
     mock_running = MagicMock(spec=RunningProfile)
-    mock_running.display = 100
-    mock_running.ws_port = 6100
     mock_running.cdp_port = 5100
+    mock_running.profile_id = pid
     main.browser_mgr.running[pid] = mock_running
     main.browser_mgr.stop = AsyncMock()
 
@@ -161,7 +160,7 @@ def test_launch_failure_500(app_client: TestClient):
     """Generic exception from browser_mgr.launch should map to 500."""
     create = app_client.post("/api/profiles", json={"name": "Crash"})
     pid = create.json()["id"]
-    main.browser_mgr.launch = AsyncMock(side_effect=RuntimeError("Xvnc failed"))
+    main.browser_mgr.launch = AsyncMock(side_effect=RuntimeError("driver crashed"))
     resp = app_client.post(f"/api/profiles/{pid}/launch")
     assert resp.status_code == 500
     assert resp.json()["detail"] == "Failed to launch browser"
@@ -261,8 +260,6 @@ def test_running_profile_has_cdp_url(app_client: TestClient):
     pid = create.json()["id"]
 
     mock_running = MagicMock(spec=RunningProfile)
-    mock_running.display = 100
-    mock_running.ws_port = 6100
     mock_running.cdp_port = 5100
     mock_running.profile_id = pid
     main.browser_mgr.running[pid] = mock_running
@@ -292,8 +289,6 @@ def test_cdp_json_list_not_running(app_client: TestClient):
 def _mock_running_profile(pid: str) -> MagicMock:
     """Create a mock RunningProfile and register it in browser_mgr."""
     mock = MagicMock(spec=RunningProfile)
-    mock.display = 100
-    mock.ws_port = 6100
     mock.cdp_port = 5100
     mock.profile_id = pid
     main.browser_mgr.running[pid] = mock

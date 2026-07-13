@@ -9,6 +9,8 @@ import pytest
 
 import socket
 
+from unittest.mock import AsyncMock, MagicMock
+
 from backend.browser_manager import (
     BASE_CDP_PORT,
     CDP_PORT_RANGE,
@@ -98,7 +100,6 @@ def test_build_args_always_includes_base():
     args = _mgr._build_fingerprint_args({})
     assert "--disable-infobars" in args
     assert "--test-type" in args
-    assert "--use-angle=swiftshader" in args
 
 
 def test_build_args_seed():
@@ -138,8 +139,8 @@ def test_build_args_screen():
 
 def test_build_args_empty_profile():
     args = _mgr._build_fingerprint_args({})
-    # Only the 3 base args
-    assert len(args) == 3
+    # Only the 2 base args
+    assert len(args) == 2  # --disable-infobars, --test-type
 
 
 # ── launch_args appended to extra_args ────────────────────────────────────────
@@ -262,3 +263,31 @@ def test_init_idempotent(tmp_path: Path):
     # Second call should NOT overwrite (file already exists)
     _init_profile_defaults(tmp_path)
     assert bookmarks_path.read_text() == "SENTINEL"
+
+
+# ── Desktop launch behavior ──────────────────────────────────────────────────
+
+
+async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch):
+    """Headed desktop launch must not pass viewport or env (cloakbrowser
+    defaults to no_viewport; DISPLAY injection was VNC-only)."""
+    from backend import browser_manager as bm
+
+    mock_launch = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(bm, "launch_persistent_context_async", mock_launch)
+
+    mgr = BrowserManager()
+    profile = {
+        "id": "p1",
+        "name": "Desktop",
+        "user_data_dir": str(tmp_path / "p1"),
+        "fingerprint_seed": 7,
+    }
+    running = await mgr.launch(profile)
+
+    kwargs = mock_launch.call_args.kwargs
+    assert "viewport" not in kwargs
+    assert "env" not in kwargs
+    assert any(a.startswith("--remote-debugging-port=") for a in kwargs["args"])
+    assert running.cdp_port == BASE_CDP_PORT
+    assert mgr.get_status("p1") == {"status": "running", "cdp_url": "/api/profiles/p1/cdp"}

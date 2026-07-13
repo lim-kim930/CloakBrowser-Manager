@@ -43,7 +43,6 @@ browser_mgr = BrowserManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    await browser_mgr.cleanup_stale()
     browser_mgr._auto_launch_task = asyncio.create_task(browser_mgr.auto_launch_all())
     logger.info("CloakBrowser Manager started")
     yield
