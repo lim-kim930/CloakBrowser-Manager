@@ -11,8 +11,18 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path("/data")  # default; overridden by configure() at startup
-DB_PATH = DATA_DIR / "profiles.db"
+import platformdirs
+
+# Set by configure() — from --data-dir or default_data_dir(). None until then,
+# resolved lazily so `uvicorn backend.main:app` (dev) works without the entry point.
+DATA_DIR: Path | None = None
+DB_PATH: Path | None = None
+
+
+def default_data_dir() -> Path:
+    """OS-standard app data dir: %LOCALAPPDATA%\\CloakBrowser on Windows,
+    ~/Library/Application Support/CloakBrowser on macOS, ~/.local/share/CloakBrowser on Linux."""
+    return Path(platformdirs.user_data_dir("CloakBrowser", appauthor=False))
 
 
 def configure(data_dir: Path | str) -> None:
@@ -22,8 +32,14 @@ def configure(data_dir: Path | str) -> None:
     DB_PATH = DATA_DIR / "profiles.db"
 
 
+def _ensure_configured() -> None:
+    if DB_PATH is None:
+        configure(default_data_dir())
+
+
 @contextmanager
 def get_db():
+    _ensure_configured()
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -35,6 +51,7 @@ def get_db():
 
 
 def init_db():
+    _ensure_configured()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_db() as conn:
         conn.executescript("""
@@ -96,6 +113,7 @@ def create_profile(
     fingerprint_seed: int | None = None,
     **fields: Any,
 ) -> dict[str, Any]:
+    _ensure_configured()
     profile_id = str(uuid.uuid4())
     seed = fingerprint_seed if fingerprint_seed is not None else random.randint(10000, 99999)
     user_data_dir = str(DATA_DIR / "profiles" / profile_id)

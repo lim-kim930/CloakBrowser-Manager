@@ -7,9 +7,13 @@ Browsers launch as real windows on the user's desktop; there is no VNC layer.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
+import os
 import shutil
+import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -479,3 +483,77 @@ async def cdp_page_proxy(websocket: WebSocket, profile_id: str, path: str):
 
     target_url = f"ws://127.0.0.1:{running.cdp_port}/devtools/{path}"
     await _proxy_cdp_websocket(websocket, target_url, f"CDP page proxy [{profile_id}]")
+
+
+# ── Entry point (sidecar / standalone) ───────────────────────────────────────
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="cloakbrowser-manager", description="CloakBrowser Manager backend"
+    )
+    parser.add_argument("--port", type=int, default=8000, help="API port (default 8000)")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1)")
+    parser.add_argument(
+        "--data-dir", type=Path, default=None,
+        help="Data directory (default: OS app-data dir, e.g. %%LOCALAPPDATA%%\\CloakBrowser)",
+    )
+    parser.add_argument(
+        "--allow-origin", action="append", default=[],
+        help="Extra allowed Origin for state-changing requests (repeatable)",
+    )
+    return parser
+
+
+def _stdin_watchdog() -> None:
+    """Block until stdin hits EOF (parent's pipe closed), then shut down.
+
+    The Tauri shell keeps our stdin open for our whole lifetime. If the shell
+    crashes or is task-killed, the pipe breaks and we clean up the browsers
+    ourselves instead of orphaning them.
+    """
+    try:
+        if sys.stdin is None:
+            return
+        while sys.stdin.buffer.read(4096):
+            pass
+    except Exception:
+        pass
+    logger.info("stdin EOF — parent process gone, shutting down")
+    request_shutdown()
+
+
+def _start_stdin_watchdog() -> None:
+    threading.Thread(target=_stdin_watchdog, name="stdin-watchdog", daemon=True).start()
+
+
+def main(argv: list[str] | None = None) -> None:
+    global _uvicorn_server
+
+    raw_argv = sys.argv[1:] if argv is None else argv
+    args = build_arg_parser().parse_args(raw_argv)
+
+    data_dir = args.data_dir or db.default_data_dir()
+    db.configure(data_dir)
+    # Keep the Chromium kernel cache inside the app data dir (default is
+    # ~/.cloakbrowser). setdefault so an explicit env override wins.
+    os.environ.setdefault("CLOAKBROWSER_CACHE_DIR", str(Path(data_dir) / "chromium-cache"))
+
+    # Extend IN PLACE — both middlewares hold a reference to this list.
+    ALLOWED_ORIGINS.extend(o for o in args.allow_origin if o not in ALLOWED_ORIGINS)
+
+    # Sidecar mode: an explicit --port (Tauri always passes it) or a frozen
+    # binary. Interactive `python -m backend.main` keeps a usable terminal.
+    if "--port" in raw_argv or getattr(sys, "frozen", False):
+        _start_stdin_watchdog()
+
+    config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
+    _uvicorn_server = uvicorn.Server(config)
+    _uvicorn_server.run()
+
+
+if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.freeze_support()  # required for PyInstaller onefile
+    main()

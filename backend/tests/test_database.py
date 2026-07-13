@@ -254,3 +254,21 @@ def test_delete_profile_cascades_tags(tmp_db: Path):
             "SELECT * FROM profile_tags WHERE profile_id = ?", (p["id"],)
         ).fetchall()
     assert len(rows) == 0
+
+
+# ── default_data_dir / lazy configure ────────────────────────────────────────
+
+
+def test_default_data_dir_is_cloakbrowser_dir():
+    d = db.default_data_dir()
+    assert d.is_absolute()
+    assert d.name == "CloakBrowser"
+
+
+def test_lazy_auto_configure(tmp_path: Path, monkeypatch):
+    """Without configure(), first DB access falls back to default_data_dir()."""
+    monkeypatch.setattr(db, "DATA_DIR", None)
+    monkeypatch.setattr(db, "DB_PATH", None)
+    monkeypatch.setattr(db, "default_data_dir", lambda: tmp_path / "auto")
+    db.init_db()
+    assert (tmp_path / "auto" / "profiles.db").exists()
