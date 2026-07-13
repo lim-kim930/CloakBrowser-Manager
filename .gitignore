@@ -20,7 +20,16 @@ deploy.sh
 
 # Claude Code
 .claude/
-CLAUDE.md
 publish-docker.sh
 .beads
 debug
+
+# PyInstaller sidecar
+backend/build/
+backend/dist/
+backend/*.spec
+
+# Tauri
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+frontend/src-tauri/bin/
