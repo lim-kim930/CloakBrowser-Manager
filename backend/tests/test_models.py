@@ -4,7 +4,6 @@ import pytest
 from pydantic import ValidationError
 
 from backend.models import (
-    ClipboardRequest,
     LaunchResponse,
     ProfileCreate,
     ProfileResponse,
@@ -125,54 +124,50 @@ def test_tag_create_with_color():
     assert t.color == "#00ff00"
 
 
-# ── ClipboardRequest ─────────────────────────────────────────────────────────
-
-
-def test_clipboard_request_valid():
-    c = ClipboardRequest(text="hello world")
-    assert c.text == "hello world"
-
-
-def test_clipboard_request_max_length():
-    with pytest.raises(ValidationError):
-        ClipboardRequest(text="x" * 1_048_577)
-
-
-def test_clipboard_request_at_limit():
-    c = ClipboardRequest(text="x" * 1_048_576)
-    assert len(c.text) == 1_048_576
-
-
 # ── LaunchResponse ──────────────────────────────────────────────────────────
 
 
 def test_launch_response_with_cdp_url():
-    r = LaunchResponse(
-        profile_id="abc", vnc_ws_port=6100, display=":100",
-        cdp_url="/api/profiles/abc/cdp",
-    )
+    r = LaunchResponse(profile_id="abc", cdp_url="/api/profiles/abc/cdp")
     assert r.cdp_url == "/api/profiles/abc/cdp"
+    assert r.status == "running"
 
 
 def test_launch_response_cdp_url_default_none():
-    r = LaunchResponse(profile_id="abc", vnc_ws_port=6100, display=":100")
+    r = LaunchResponse(profile_id="abc")
     assert r.cdp_url is None
 
 
 # ── ProfileStatusResponse ──────────────────────────────────────────────────
 
 
-def test_profile_status_response_cdp_url():
-    r = ProfileStatusResponse(
-        status="running", vnc_ws_port=6100, display=":100",
-        cdp_url="/api/profiles/abc/cdp",
-    )
+def test_profile_status_response_running():
+    r = ProfileStatusResponse(status="running", cdp_url="/api/profiles/abc/cdp")
     assert r.cdp_url == "/api/profiles/abc/cdp"
 
 
-def test_profile_status_response_cdp_url_stopped():
+def test_profile_status_response_stopped():
     r = ProfileStatusResponse(status="stopped")
     assert r.cdp_url is None
+
+
+# ── HealthResponse ──────────────────────────────────────────────────────────
+
+
+def test_health_response_ready():
+    from backend.models import BinaryStatus, HealthResponse
+
+    h = HealthResponse(version="0.1.0", binary=BinaryStatus(state="ready", version="0.4.10"))
+    assert h.status == "ok"
+    assert h.binary.state == "ready"
+    assert h.binary.error is None
+
+
+def test_health_response_error_state():
+    from backend.models import BinaryStatus, HealthResponse
+
+    h = HealthResponse(version="0.1.0", binary=BinaryStatus(state="error", error="boom"))
+    assert h.binary.error == "boom"
 
 
 # ── ProfileResponse ────────────────────────────────────────────────────────

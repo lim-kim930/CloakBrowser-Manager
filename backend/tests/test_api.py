@@ -227,27 +227,6 @@ def test_profile_launch_args_get(app_client: TestClient):
     assert resp.json()["launch_args"] == ["--flag"]
 
 
-# ── Clipboard Sync Setting ──────────────────────────────────────────────────
-
-
-def test_profile_clipboard_sync_default_true(app_client: TestClient):
-    """New profiles should have clipboard_sync=true by default."""
-    resp = app_client.post("/api/profiles", json={"name": "Clipboard Test"})
-    assert resp.status_code == 201
-    assert resp.json()["clipboard_sync"] is True
-
-
-def test_profile_clipboard_sync_update(app_client: TestClient):
-    """clipboard_sync can be toggled per profile."""
-    resp = app_client.post("/api/profiles", json={"name": "Clipboard Toggle"})
-    pid = resp.json()["id"]
-    resp = app_client.put(f"/api/profiles/{pid}", json={"clipboard_sync": False})
-    assert resp.status_code == 200
-    assert resp.json()["clipboard_sync"] is False
-    resp = app_client.put(f"/api/profiles/{pid}", json={"clipboard_sync": True})
-    assert resp.json()["clipboard_sync"] is True
-
-
 # ── Clipboard ────────────────────────────────────────────────────────────────
 
 
