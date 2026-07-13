@@ -32,15 +32,20 @@ _mock_cloakbrowser.config = _mock_config  # type: ignore[attr-defined]
 _mock_cloakbrowser.download = _mock_download  # type: ignore[attr-defined]
 
 
-from backend import binary_status, database as db  # noqa: E402
+from backend import database as db  # noqa: E402
 
 
 @pytest.fixture()
-def kernel_ready():
-    """Force the kernel tracker to ready; restore to downloading afterwards."""
-    binary_status.tracker.mark_ready("0.0.0-test")
-    yield
-    binary_status.tracker.mark_downloading()
+def installed_kernel(tmp_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Register a valid kernel: cache dir + fake exe + DB row (default)."""
+    from backend import kernel_manager as km
+
+    cache = tmp_path / "kernel-cache"
+    monkeypatch.setenv("CLOAKBROWSER_CACHE_DIR", str(cache))
+    exe = km.kernel_exe("1.0.0.0")
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_bytes(b"fake")
+    return db.create_kernel("1.0.0.0", "downloaded")
 
 
 @pytest.fixture()
@@ -60,12 +65,11 @@ def sample_profile(tmp_db: Path):
 
 
 @pytest.fixture()
-def app_client(tmp_db: Path, kernel_ready, monkeypatch: pytest.MonkeyPatch):
+def app_client(tmp_db: Path, installed_kernel, monkeypatch: pytest.MonkeyPatch):
     """FastAPI TestClient with mocked DB, ready kernel, and no real cleanup."""
     from backend import main
 
     monkeypatch.setattr(main.browser_mgr, "cleanup_all", AsyncMock())
-    monkeypatch.setattr(binary_status, "start_background_ensure", lambda: None)
 
     from starlette.testclient import TestClient
 

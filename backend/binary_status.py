@@ -1,95 +1,104 @@
-"""Track CloakBrowser Chromium kernel download/readiness state for /api/health.
+"""Kernel library status for /api/health + on-demand download runner.
 
-The kernel is downloaded on first run by cloakbrowser.ensure_binary() (blocking).
-This tracker is updated from a background thread so the health endpoint can report
-downloading / ready / error without blocking startup.
+The library state is derived from the kernels table; the only mutable piece
+is the download tracker (user-triggered, one at a time).
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import threading
+from pathlib import Path
 from typing import Callable, Literal
+
+from . import database as db
 
 logger = logging.getLogger("cloakbrowser.manager.binary")
 
-State = Literal["downloading", "ready", "error"]
+LibraryState = Literal["none", "downloading", "ready", "error"]
+DownloadState = Literal["idle", "downloading", "ready", "error"]
 
 
-class BinaryStatusTracker:
+class DownloadTracker:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._state: State = "downloading"
-        self._version: str | None = None
+        self._state: DownloadState = "idle"
         self._error: str | None = None
 
     def snapshot(self) -> dict:
         with self._lock:
-            return {"state": self._state, "version": self._version, "error": self._error}
+            return {"state": self._state, "error": self._error}
 
-    def mark_downloading(self) -> None:
+    def _set(self, state: DownloadState, error: str | None) -> None:
         with self._lock:
-            self._state = "downloading"
-            self._error = None
-
-    def mark_ready(self, version: str | None) -> None:
-        with self._lock:
-            self._state = "ready"
-            self._version = version
-            self._error = None
-
-    def mark_error(self, error: str) -> None:
-        with self._lock:
-            self._state = "error"
+            self._state = state
             self._error = error
 
+    def start(self) -> bool:
+        """Kick off the recommended-version download in a daemon thread.
 
-def run_ensure_binary(
-    tracker: BinaryStatusTracker,
-    ensure_fn: Callable[[], object],
-    version_fn: Callable[[], str | None],
-) -> None:
-    """Ensure the kernel is present, updating the tracker. Blocking — run in a thread."""
-    tracker.mark_downloading()
-    try:
-        ensure_fn()
-    except Exception as exc:  # noqa: BLE001 — surface any download failure to the UI
-        logger.error("Kernel ensure_binary failed: %s", exc)
-        tracker.mark_error(str(exc))
-        return
-    try:
-        version = version_fn()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Kernel version lookup failed: %s", exc)
-        version = None
-    tracker.mark_ready(version)
-    logger.info("Kernel ready (version=%s)", version)
+        Returns False if a download is already running.
+        """
+        with self._lock:
+            if self._state == "downloading":
+                return False
+            self._state = "downloading"
+            self._error = None
+        threading.Thread(
+            target=run_download, args=(self, _ensure_recommended),
+            name="kernel-download", daemon=True,
+        ).start()
+        return True
 
 
-# Module-level singleton — shared by main.py (health endpoint, lifespan)
-# and browser_manager (launch gating).
-tracker = BinaryStatusTracker()
+download = DownloadTracker()
 
 
-def _ensure_kernel() -> None:
+def _ensure_recommended() -> str:
     from cloakbrowser.download import ensure_binary
 
-    ensure_binary()
+    return str(ensure_binary())
 
 
-def _kernel_version() -> str | None:
-    from cloakbrowser.config import CHROMIUM_VERSION
+def run_download(tracker: DownloadTracker, ensure_fn: Callable[[], str]) -> None:
+    """Download the recommended kernel and register it. Blocking — run in a thread."""
+    tracker._set("downloading", None)
+    try:
+        exe_path = ensure_fn()
+    except Exception as exc:  # noqa: BLE001 — surface any download failure to the UI
+        logger.error("Kernel download failed: %s", exc)
+        tracker._set("error", str(exc))
+        return
+    version = _version_from_exe_path(exe_path)
+    if version is None:
+        tracker._set("error", f"Downloaded kernel has unexpected path layout: {exe_path}")
+        return
+    if not db.get_kernel_by_version(version):
+        db.create_kernel(version, "downloaded")
+    tracker._set("ready", None)
+    logger.info("Kernel %s downloaded and registered", version)
 
-    return CHROMIUM_VERSION
+
+def _version_from_exe_path(exe_path: str) -> str | None:
+    """Extract the version from .../chromium-{version}[...]/<exe>."""
+    for part in reversed(Path(exe_path).parts):
+        m = re.fullmatch(r"chromium-(\d+(?:\.\d+){2,4})(?:-pro)?", part)
+        if m:
+            return m.group(1)
+    return None
 
 
-def start_background_ensure() -> threading.Thread:
-    """Kick off the (blocking) kernel download in a daemon thread."""
-    thread = threading.Thread(
-        target=run_ensure_binary,
-        args=(tracker, _ensure_kernel, _kernel_version),
-        name="ensure-binary",
-        daemon=True,
-    )
-    thread.start()
-    return thread
+def library_snapshot() -> dict:
+    """State of the kernel library, for /api/health."""
+    dl = download.snapshot()
+    if dl["state"] == "downloading":
+        return {"state": "downloading", "version": None, "error": None}
+    kernels = db.list_kernels()
+    if kernels:
+        default = db.get_default_kernel()
+        version = default["version"] if default else kernels[0]["version"]
+        return {"state": "ready", "version": version, "error": None}
+    if dl["state"] == "error":
+        return {"state": "error", "version": None, "error": dl["error"]}
+    return {"state": "none", "version": None, "error": None}
