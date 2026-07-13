@@ -16,6 +16,9 @@ from pathlib import Path
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import binary_status, database as db
 from .browser_manager import BinaryNotReadyError, BrowserManager
@@ -37,6 +40,64 @@ logging.getLogger("websockets").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+
+# Origins allowed to make state-changing requests / WebSocket upgrades.
+# The Tauri WebView origin is http://tauri.localhost on Windows (WebView2)
+# and tauri://localhost on macOS/Linux; 5173 covers the Vite dev server.
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://tauri.localhost",
+    "tauri://localhost",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+# Shared BY REFERENCE with both middlewares; main() extends it in place
+# for --allow-origin so runtime additions are visible without a rebuild.
+ALLOWED_ORIGINS: list[str] = list(DEFAULT_ALLOWED_ORIGINS)
+
+_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
+
+
+def _scope_origin(scope: Scope) -> str | None:
+    for key, val in scope.get("headers", []):
+        if key == b"origin":
+            return val.decode("latin-1")
+    return None
+
+
+class OriginCheckMiddleware:
+    """Reject browser-originated cross-site writes and WebSocket upgrades.
+
+    The backend binds 127.0.0.1 only; this stops malicious web pages (and
+    DNS-rebinding hosts) from driving the local API through the user's
+    browser. Requests without an Origin header pass through untouched.
+    Raw ASGI (not BaseHTTPMiddleware) so WebSocket scopes work.
+    """
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            origin = _scope_origin(scope)
+            if (
+                origin is not None
+                and scope["method"] in _WRITE_METHODS
+                and origin not in ALLOWED_ORIGINS
+            ):
+                logger.warning("Blocked cross-origin write from %s to %s", origin, scope["path"])
+                response = JSONResponse({"detail": "Origin not allowed"}, status_code=403)
+                await response(scope, receive, send)
+                return
+        elif scope["type"] == "websocket":
+            origin = _scope_origin(scope)
+            if origin is not None and origin not in ALLOWED_ORIGINS:
+                logger.warning("Blocked cross-origin WebSocket from %s", origin)
+                # ASGI requires receiving websocket.connect before closing
+                await receive()
+                await send({"type": "websocket.close", "code": 4403, "reason": "Origin not allowed"})
+                return
+        await self.app(scope, receive, send)
 
 
 # Singleton browser manager
@@ -72,6 +133,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CloakBrowser Manager", lifespan=lifespan)
+
+# CORS added last = outermost, so it answers preflights before the origin
+# check sees them (OPTIONS isn't a write method anyway).
+app.add_middleware(OriginCheckMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── Profile CRUD ──────────────────────────────────────────────────────────────
