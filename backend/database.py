@@ -11,8 +11,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path("/data")
+DATA_DIR = Path("/data")  # default; overridden by configure() at startup
 DB_PATH = DATA_DIR / "profiles.db"
+
+
+def configure(data_dir: Path | str) -> None:
+    """Point the database at a data directory. Call before init_db()."""
+    global DATA_DIR, DB_PATH
+    DATA_DIR = Path(data_dir)
+    DB_PATH = DATA_DIR / "profiles.db"
 
 
 @contextmanager

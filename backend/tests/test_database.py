@@ -10,6 +10,24 @@ import pytest
 from backend import database as db
 
 
+# ── configure ────────────────────────────────────────────────────────────────
+
+
+def test_configure_sets_data_dir_and_db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # configure() mutates module globals — snapshot current values so
+    # monkeypatch restores them after the test (no cross-test pollution).
+    monkeypatch.setattr(db, "DATA_DIR", db.DATA_DIR)
+    monkeypatch.setattr(db, "DB_PATH", db.DB_PATH)
+
+    db.configure(tmp_path / "appdata")
+    assert db.DATA_DIR == tmp_path / "appdata"
+    assert db.DB_PATH == tmp_path / "appdata" / "profiles.db"
+    # user_data_dir for new profiles derives from the configured DATA_DIR
+    db.init_db()
+    p = db.create_profile("Cfg")
+    assert p["user_data_dir"].startswith(str(tmp_path / "appdata"))
+
+
 # ── init_db ──────────────────────────────────────────────────────────────────
 
 
