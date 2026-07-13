@@ -14,11 +14,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from . import binary_status, database as db
 from .browser_manager import BinaryNotReadyError, BrowserManager
 from .models import (
+    BinaryStatus,
+    HealthResponse,
     LaunchResponse,
     ProfileCreate,
     ProfileResponse,
@@ -38,6 +41,20 @@ logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # Singleton browser manager
 browser_mgr = BrowserManager()
+
+
+MANAGER_VERSION = "0.1.0"
+
+# Set by main() so /api/shutdown and the stdin watchdog can stop the server.
+_uvicorn_server: uvicorn.Server | None = None
+
+
+def request_shutdown() -> None:
+    """Ask the running uvicorn server to exit gracefully (lifespan cleanup runs)."""
+    if _uvicorn_server is not None:
+        _uvicorn_server.should_exit = True
+    else:
+        logger.warning("Shutdown requested but no uvicorn server reference (dev mode)")
 
 
 @asynccontextmanager
@@ -198,6 +215,27 @@ async def get_system_status():
         binary_version=CHROMIUM_VERSION,
         profiles_total=len(profiles),
     )
+
+
+# ── Health / Shutdown ─────────────────────────────────────────────────────────
+
+
+@app.get("/api/health", response_model=HealthResponse)
+async def health():
+    """Liveness + kernel state. Polled by the Tauri shell and the frontend."""
+    return HealthResponse(
+        status="ok",
+        version=MANAGER_VERSION,
+        binary=BinaryStatus(**binary_status.tracker.snapshot()),
+    )
+
+
+@app.post("/api/shutdown")
+async def shutdown_endpoint():
+    """Graceful shutdown — called by the Tauri shell when the window closes."""
+    logger.info("Shutdown requested via API")
+    request_shutdown()
+    return {"ok": True}
 
 
 # ── CDP WebSocket Proxy ──────────────────────────────────────────────────────

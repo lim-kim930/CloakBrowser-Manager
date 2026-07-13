@@ -383,3 +383,59 @@ def test_cdp_json_version_chrome_unreachable(app_client: TestClient):
 
     assert resp.status_code == 502
     main.browser_mgr.running.pop(pid, None)
+
+
+# ── Health ──────────────────────────────────────────────────────────────────
+
+
+def test_health_ready(app_client: TestClient):
+    from backend import binary_status
+
+    binary_status.tracker.mark_ready("135.0.1")
+    resp = app_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["version"] == main.MANAGER_VERSION
+    assert data["binary"] == {"state": "ready", "version": "135.0.1", "error": None}
+
+
+def test_health_downloading(app_client: TestClient):
+    from backend import binary_status
+
+    binary_status.tracker.mark_downloading()
+    resp = app_client.get("/api/health")
+    assert resp.json()["binary"]["state"] == "downloading"
+    binary_status.tracker.mark_ready("0.0.0-test")  # restore for app_client teardown
+
+
+def test_health_error(app_client: TestClient):
+    from backend import binary_status
+
+    binary_status.tracker.mark_error("disk full")
+    resp = app_client.get("/api/health")
+    data = resp.json()
+    assert data["binary"]["state"] == "error"
+    assert data["binary"]["error"] == "disk full"
+    binary_status.tracker.mark_ready("0.0.0-test")
+
+
+# ── Shutdown ────────────────────────────────────────────────────────────────
+
+
+def test_shutdown_sets_should_exit(app_client: TestClient, monkeypatch):
+    from types import SimpleNamespace
+
+    fake_server = SimpleNamespace(should_exit=False)
+    monkeypatch.setattr(main, "_uvicorn_server", fake_server)
+    resp = app_client.post("/api/shutdown")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert fake_server.should_exit is True
+
+
+def test_shutdown_without_server_still_ok(app_client: TestClient, monkeypatch):
+    """Dev mode (uvicorn CLI): no server ref — endpoint must not crash."""
+    monkeypatch.setattr(main, "_uvicorn_server", None)
+    resp = app_client.post("/api/shutdown")
+    assert resp.status_code == 200
