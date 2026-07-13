@@ -22,11 +22,25 @@ _mock_cloakbrowser.launch_persistent_context_async = AsyncMock()  # type: ignore
 _mock_config = types.ModuleType("cloakbrowser.config")
 _mock_config.CHROMIUM_VERSION = "0.0.0-test"  # type: ignore[attr-defined]
 
+_mock_download = types.ModuleType("cloakbrowser.download")
+_mock_download.ensure_binary = MagicMock()  # type: ignore[attr-defined]
+
 sys.modules.setdefault("cloakbrowser", _mock_cloakbrowser)
 sys.modules.setdefault("cloakbrowser.config", _mock_config)
+sys.modules.setdefault("cloakbrowser.download", _mock_download)
+_mock_cloakbrowser.config = _mock_config  # type: ignore[attr-defined]
+_mock_cloakbrowser.download = _mock_download  # type: ignore[attr-defined]
 
 
-from backend import database as db  # noqa: E402
+from backend import binary_status, database as db  # noqa: E402
+
+
+@pytest.fixture()
+def kernel_ready():
+    """Force the kernel tracker to ready; restore to downloading afterwards."""
+    binary_status.tracker.mark_ready("0.0.0-test")
+    yield
+    binary_status.tracker.mark_downloading()
 
 
 @pytest.fixture()
@@ -46,12 +60,12 @@ def sample_profile(tmp_db: Path):
 
 
 @pytest.fixture()
-def app_client(tmp_db: Path, monkeypatch: pytest.MonkeyPatch):
-    """FastAPI TestClient with mocked DB and browser manager."""
+def app_client(tmp_db: Path, kernel_ready, monkeypatch: pytest.MonkeyPatch):
+    """FastAPI TestClient with mocked DB, ready kernel, and no real cleanup."""
     from backend import main
 
-    # Patch lifespan-called methods to avoid subprocess calls
     monkeypatch.setattr(main.browser_mgr, "cleanup_all", AsyncMock())
+    monkeypatch.setattr(binary_status, "start_background_ensure", lambda: None)
 
     from starlette.testclient import TestClient
 

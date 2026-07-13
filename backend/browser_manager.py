@@ -13,6 +13,8 @@ from typing import Any
 
 from cloakbrowser import launch_persistent_context_async
 
+from . import binary_status
+
 logger = logging.getLogger("cloakbrowser.manager.browser")
 
 
@@ -139,6 +141,10 @@ def _init_profile_defaults(user_data_dir: Path) -> None:
         logger.info("Set DuckDuckGo as default search for %s", user_data_dir.name)
 
 
+class BinaryNotReadyError(RuntimeError):
+    """Launch attempted before the Chromium kernel finished downloading."""
+
+
 BASE_CDP_PORT = 5100
 CDP_PORT_RANGE = 100  # cycle through 5100-5199 to avoid TIME_WAIT collisions
 
@@ -160,6 +166,9 @@ class BrowserManager:
 
     async def launch(self, profile: dict[str, Any]) -> RunningProfile:
         """Launch a browser instance for the given profile."""
+        if binary_status.tracker.snapshot()["state"] != "ready":
+            raise BinaryNotReadyError("Browser core not ready")
+
         profile_id = profile["id"]
 
         async with self._lock:
@@ -270,6 +279,16 @@ class BrowserManager:
         if not auto_profiles:
             logger.info("No profiles configured for auto-launch")
             return
+
+        # Wait for the kernel — on first run it may still be downloading.
+        while True:
+            state = binary_status.tracker.snapshot()["state"]
+            if state == "ready":
+                break
+            if state == "error":
+                logger.error("Auto-launch aborted: browser core failed to download")
+                return
+            await asyncio.sleep(1)
 
         logger.info("Auto-launching %d profile(s)...", len(auto_profiles))
         for profile in auto_profiles:

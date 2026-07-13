@@ -268,7 +268,7 @@ def test_init_idempotent(tmp_path: Path):
 # ── Desktop launch behavior ──────────────────────────────────────────────────
 
 
-async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch):
+async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch, kernel_ready):
     """Headed desktop launch must not pass viewport or env (cloakbrowser
     defaults to no_viewport; DISPLAY injection was VNC-only)."""
     from backend import browser_manager as bm
@@ -291,3 +291,56 @@ async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch):
     assert any(a.startswith("--remote-debugging-port=") for a in kwargs["args"])
     assert running.cdp_port == BASE_CDP_PORT
     assert mgr.get_status("p1") == {"status": "running", "cdp_url": "/api/profiles/p1/cdp"}
+
+
+async def test_launch_raises_when_kernel_not_ready(tmp_path):
+    from backend import binary_status
+    from backend.browser_manager import BinaryNotReadyError
+
+    binary_status.tracker.mark_downloading()
+    mgr = BrowserManager()
+    with pytest.raises(BinaryNotReadyError):
+        await mgr.launch({"id": "x", "user_data_dir": str(tmp_path)})
+    assert "x" not in mgr._launching  # launch slot released
+
+
+async def test_auto_launch_waits_for_kernel(tmp_db, monkeypatch):
+    import asyncio
+
+    from backend import binary_status, database as db
+
+    db.create_profile(name="Auto", auto_launch=True)
+    mgr = BrowserManager()
+    launched: list[str] = []
+
+    async def fake_launch(profile):
+        launched.append(profile["id"])
+
+    monkeypatch.setattr(mgr, "launch", fake_launch)
+    binary_status.tracker.mark_downloading()
+    task = asyncio.create_task(mgr.auto_launch_all())
+    await asyncio.sleep(0.05)
+    assert launched == []  # still waiting for the kernel
+    binary_status.tracker.mark_ready("0.0.0-test")
+    await asyncio.wait_for(task, timeout=5)
+    assert len(launched) == 1
+    binary_status.tracker.mark_downloading()
+
+
+async def test_auto_launch_aborts_on_kernel_error(tmp_db, monkeypatch):
+    import asyncio
+
+    from backend import binary_status, database as db
+
+    db.create_profile(name="Auto2", auto_launch=True)
+    mgr = BrowserManager()
+    launched: list[str] = []
+
+    async def fake_launch(profile):
+        launched.append(profile["id"])
+
+    monkeypatch.setattr(mgr, "launch", fake_launch)
+    binary_status.tracker.mark_error("no network")
+    await asyncio.wait_for(mgr.auto_launch_all(), timeout=5)
+    assert launched == []
+    binary_status.tracker.mark_downloading()

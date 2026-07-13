@@ -64,3 +64,32 @@ def run_ensure_binary(
         version = None
     tracker.mark_ready(version)
     logger.info("Kernel ready (version=%s)", version)
+
+
+# Module-level singleton — shared by main.py (health endpoint, lifespan)
+# and browser_manager (launch gating).
+tracker = BinaryStatusTracker()
+
+
+def _ensure_kernel() -> None:
+    from cloakbrowser.download import ensure_binary
+
+    ensure_binary()
+
+
+def _kernel_version() -> str | None:
+    from cloakbrowser.config import CHROMIUM_VERSION
+
+    return CHROMIUM_VERSION
+
+
+def start_background_ensure() -> threading.Thread:
+    """Kick off the (blocking) kernel download in a daemon thread."""
+    thread = threading.Thread(
+        target=run_ensure_binary,
+        args=(tracker, _ensure_kernel, _kernel_version),
+        name="ensure-binary",
+        daemon=True,
+    )
+    thread.start()
+    return thread

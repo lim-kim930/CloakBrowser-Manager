@@ -166,6 +166,18 @@ def test_launch_failure_500(app_client: TestClient):
     assert resp.json()["detail"] == "Failed to launch browser"
 
 
+def test_launch_kernel_not_ready_503(app_client: TestClient):
+    """BinaryNotReadyError from launch maps to 503."""
+    from backend.browser_manager import BinaryNotReadyError
+
+    create = app_client.post("/api/profiles", json={"name": "NotReady"})
+    pid = create.json()["id"]
+    main.browser_mgr.launch = AsyncMock(side_effect=BinaryNotReadyError("Browser core not ready"))
+    resp = app_client.post(f"/api/profiles/{pid}/launch")
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Browser core not ready"
+
+
 def test_stop_not_running(app_client: TestClient):
     resp = app_client.post("/api/profiles/nonexistent/stop")
     assert resp.status_code == 404

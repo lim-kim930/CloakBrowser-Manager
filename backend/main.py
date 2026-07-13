@@ -16,8 +16,8 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 
-from . import database as db
-from .browser_manager import BrowserManager
+from . import binary_status, database as db
+from .browser_manager import BinaryNotReadyError, BrowserManager
 from .models import (
     LaunchResponse,
     ProfileCreate,
@@ -43,6 +43,7 @@ browser_mgr = BrowserManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    binary_status.start_background_ensure()
     browser_mgr._auto_launch_task = asyncio.create_task(browser_mgr.auto_launch_all())
     logger.info("CloakBrowser Manager started")
     yield
@@ -151,7 +152,9 @@ async def launch_profile(profile_id: str):
         raise HTTPException(status_code=409, detail="Profile is already running")
 
     try:
-        running = await browser_mgr.launch(profile)
+        await browser_mgr.launch(profile)
+    except BinaryNotReadyError:
+        raise HTTPException(status_code=503, detail="Browser core not ready")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

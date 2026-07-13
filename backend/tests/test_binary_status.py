@@ -56,3 +56,23 @@ def test_run_ensure_binary_version_failure_still_ready():
     run_ensure_binary(t, ensure_fn=lambda: None, version_fn=bad_version)
     assert t.snapshot()["state"] == "ready"
     assert t.snapshot()["version"] is None
+
+
+def test_module_tracker_singleton_exists():
+    from backend import binary_status
+
+    assert isinstance(binary_status.tracker, BinaryStatusTracker)
+
+
+def test_start_background_ensure_marks_ready():
+    import sys
+
+    from backend import binary_status
+
+    thread = binary_status.start_background_ensure()
+    thread.join(timeout=5)
+    snap = binary_status.tracker.snapshot()
+    assert snap["state"] == "ready"
+    assert snap["version"] == "0.0.0-test"  # from the conftest cloakbrowser mock
+    sys.modules["cloakbrowser.download"].ensure_binary.assert_called()
+    binary_status.tracker.mark_downloading()  # restore for other tests
