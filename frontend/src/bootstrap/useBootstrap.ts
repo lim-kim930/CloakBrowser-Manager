@@ -6,7 +6,6 @@ export type BootstrapPhase =
   | { phase: "detecting" }
   | { phase: "port-conflict"; port: number }
   | { phase: "waiting-backend" }
-  | { phase: "downloading-binary" }
   | { phase: "ready" }
   | { phase: "backend-error"; message: string };
 
@@ -29,24 +28,15 @@ export function useBootstrap() {
     }
   }, []);
 
-  // Backend reachable → wait until the Chromium kernel is ready too.
+  // Gate on backend liveness only — kernel state is surfaced in the main UI,
+  // not here. Any successful health response means we're ready to go.
   const startHealthPolling = useCallback(() => {
     stopPolling();
     const tick = async () => {
       try {
-        const health = await api.health();
-        if (health.binary.state === "ready") {
-          stopPolling();
-          setState({ phase: "ready" });
-        } else if (health.binary.state === "error") {
-          stopPolling();
-          setState({
-            phase: "backend-error",
-            message: health.binary.error ?? "Browser core download failed",
-          });
-        } else {
-          setState({ phase: "downloading-binary" });
-        }
+        await api.health();
+        stopPolling();
+        setState({ phase: "ready" });
       } catch {
         // transient — keep polling; the Rust shell reports hard failures
       }

@@ -27,8 +27,6 @@ export default function App() {
       return <PortConfigModal port={state.port} onProbe={probePort} onSave={savePort} />;
     case "waiting-backend":
       return <DownloadingScreen message="Starting backend service..." />;
-    case "downloading-binary":
-      return <DownloadingScreen message="Downloading browser core..." />;
     case "backend-error":
       return <BackendErrorScreen message={state.message} onRetry={retry} />;
     case "ready":

@@ -69,27 +69,19 @@ describe("useBootstrap inside Tauri", () => {
       handlers["backend-ready"]({ state: "ready", port: 8123, message: null });
     });
     expect(setApiBase).toHaveBeenCalledWith("http://127.0.0.1:8123");
-    await waitFor(() => expect(result.current.state.phase).toBe("downloading-binary"));
-
-    mockHealth.mockResolvedValue({
-      status: "ok",
-      version: "0.1.0",
-      binary: { state: "ready", version: "135.0", error: null },
-    });
+    // Any successful health response means ready now — even mid kernel download.
     await waitFor(() => expect(result.current.state.phase).toBe("ready"), { timeout: 3000 });
   });
 
-  it("surfaces kernel download errors from health", async () => {
+  it("reaches ready even when the kernel is absent (health gates on liveness only)", async () => {
     mockInvoke.mockResolvedValue({ state: "ready", port: 8000, message: null });
     mockHealth.mockResolvedValue({
       status: "ok",
       version: "0.1.0",
-      binary: { state: "error", version: null, error: "disk full" },
+      binary: { state: "none", version: null, error: null },
     });
     const { result } = renderHook(() => useBootstrap());
-    await waitFor(() =>
-      expect(result.current.state).toEqual({ phase: "backend-error", message: "disk full" }),
-    );
+    await waitFor(() => expect(result.current.state.phase).toBe("ready"), { timeout: 3000 });
   });
 
   it("shows backend error and retries via restart_backend", async () => {
