@@ -23,6 +23,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKEND = REPO_ROOT / "backend"
 TAURI_BIN = REPO_ROOT / "frontend" / "src-tauri" / "bin"
 
+# License guard: the frozen backend is ~60MB, but the CloakBrowser Chromium
+# kernel alone is 150MB+. If the sidecar ever exceeds this, the kernel almost
+# certainly got swept into the bundle (via --collect-all cloakbrowser or a
+# CLOAKBROWSER_CACHE_DIR pointing inside site-packages), which would violate
+# BINARY-LICENSE.md's no-redistribution clause. 120MB leaves generous headroom
+# above the real backend while staying far below any kernel-inclusive artifact.
+MAX_SIDECAR_BYTES = 120 * 1024 * 1024
+
 
 def target_triple() -> str:
     """Host target triple — ask rustc, fall back to platform-derived."""
@@ -55,6 +63,20 @@ def crypto_collect_args() -> list[str]:
     return args
 
 
+def check_sidecar_size(size_bytes: int) -> None:
+    """License guard: refuse to install a sidecar large enough to contain the
+    CloakBrowser Chromium kernel. Raises SystemExit when over the limit."""
+    if size_bytes > MAX_SIDECAR_BYTES:
+        raise SystemExit(
+            f"Refusing to install sidecar: {size_bytes} bytes exceeds the "
+            f"{MAX_SIDECAR_BYTES}-byte guard. The CloakBrowser Chromium kernel "
+            "(150MB+) was likely swept into the bundle — via --collect-all "
+            "cloakbrowser or a CLOAKBROWSER_CACHE_DIR inside site-packages. "
+            "Bundling it violates BINARY-LICENSE.md; the kernel must download "
+            "on first run instead."
+        )
+
+
 def main() -> None:
     ext = ".exe" if sys.platform == "win32" else ""
     cmd = [
@@ -83,6 +105,8 @@ def main() -> None:
     built = BACKEND / "dist" / f"server{ext}"
     if not built.exists():
         sys.exit(f"PyInstaller did not produce {built}")
+
+    check_sidecar_size(built.stat().st_size)
 
     TAURI_BIN.mkdir(parents=True, exist_ok=True)
     dest = TAURI_BIN / f"server-{target_triple()}{ext}"

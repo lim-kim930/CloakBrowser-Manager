@@ -3605,4 +3605,5 @@ git status   # must be "up to date with origin"
 3. **Added `get_backend_state` command + `backend-starting` event** (not in §9's list). The sidecar spawn begins before the WebView attaches listeners; without a pull-based snapshot the frontend can miss `port-conflict`/`backend-ready` forever.
 4. **`cloakbrowser[geoip]>=0.4.10`** (was `>=0.3.31`). §13's integration facts (`ensure_binary`, `CLOAKBROWSER_CACHE_DIR`, headed no-viewport gating) were verified against 0.4.10; older versions may lack them.
 5. **`LoginRequest`/`ClipboardRequest` deletion is deferred** to the tasks that stop importing them (Tasks 4/5), keeping every intermediate commit green.
+6. **The `clipboard_sync` DB column survives** in `backend/database.py` although models/API no longer expose it — dropping it would be a destructive migration for existing profile DBs; sqlite ignores the extra column and new writes default it. Removal can ride any future schema migration.
 
