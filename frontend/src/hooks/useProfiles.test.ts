@@ -43,15 +43,15 @@ const fakeProfile = {
   human_preset: "default",
   headless: false,
   geoip: false,
-  clipboard_sync: true,
+  auto_launch: false,
   color_scheme: null,
+  launch_args: [],
   notes: null,
   user_data_dir: "/data/profiles/abc-123",
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
   tags: [],
   status: "stopped" as const,
-  vnc_ws_port: null,
   cdp_url: null,
 };
 

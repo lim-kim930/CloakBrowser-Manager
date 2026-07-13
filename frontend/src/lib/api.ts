@@ -20,7 +20,6 @@ export interface Profile {
   human_preset: string;
   headless: boolean;
   geoip: boolean;
-  clipboard_sync: boolean;
   auto_launch: boolean;
   color_scheme: string | null;
   launch_args: string[];
@@ -30,7 +29,6 @@ export interface Profile {
   updated_at: string;
   tags: { tag: string; color: string | null }[];
   status: "running" | "stopped";
-  vnc_ws_port: number | null;
   cdp_url: string | null;
 }
 
@@ -51,7 +49,6 @@ export interface ProfileCreateData {
   human_preset?: string;
   headless?: boolean;
   geoip?: boolean;
-  clipboard_sync?: boolean;
   auto_launch?: boolean;
   color_scheme?: string | null;
   launch_args?: string[];
@@ -62,8 +59,6 @@ export interface ProfileCreateData {
 export interface LaunchResult {
   profile_id: string;
   status: string;
-  vnc_ws_port: number;
-  display: string;
   cdp_url: string | null;
 }
 
@@ -106,12 +101,6 @@ export interface Health {
   binary: BinaryStatus;
 }
 
-// Global 401 callback — set by App to trigger login page on auth failure
-let _onUnauthorized: (() => void) | null = null;
-export function setOnUnauthorized(cb: (() => void) | null) {
-  _onUnauthorized = cb;
-}
-
 async function request<T>(
   path: string,
   options?: RequestInit,
@@ -121,10 +110,6 @@ async function request<T>(
     ...options,
   });
   if (!res.ok) {
-    if (res.status === 401 && _onUnauthorized) {
-      _onUnauthorized();
-      throw new ApiError(401, "Unauthorized");
-    }
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail || res.statusText);
   }
@@ -132,18 +117,6 @@ async function request<T>(
 }
 
 export const api = {
-  authStatus: () =>
-    request<{ auth_required: boolean; authenticated: boolean }>("/api/auth/status"),
-
-  login: (token: string) =>
-    request<{ ok: boolean }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ token }),
-    }),
-
-  logout: () =>
-    request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-
   listProfiles: () => request<Profile[]>("/api/profiles"),
 
   getProfile: (id: string) => request<Profile>(`/api/profiles/${id}`),
@@ -172,13 +145,4 @@ export const api = {
   getStatus: () => request<SystemStatus>("/api/status"),
 
   health: () => request<Health>("/api/health"),
-
-  setClipboard: (id: string, text: string) =>
-    request<{ ok: boolean }>(`/api/profiles/${id}/clipboard`, {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    }),
-
-  getClipboard: (id: string) =>
-    request<{ text: string }>(`/api/profiles/${id}/clipboard`),
 };

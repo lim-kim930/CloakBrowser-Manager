@@ -75,10 +75,10 @@ describe("api.deleteProfile", () => {
 
 describe("api.launchProfile", () => {
   it("sends POST to launch endpoint", async () => {
-    const result = { profile_id: "1", status: "running", vnc_ws_port: 6100, display: ":100" };
+    const result = { profile_id: "1", status: "running", cdp_url: "/api/profiles/1/cdp" };
     mockFetch.mockResolvedValueOnce(jsonResponse(result));
     const data = await api.launchProfile("1");
-    expect(data.vnc_ws_port).toBe(6100);
+    expect(data.cdp_url).toBe("/api/profiles/1/cdp");
     expect(mockFetch.mock.calls[0][0]).toBe("/api/profiles/1/launch");
   });
 });
@@ -90,29 +90,6 @@ describe("api.stopProfile", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
     await api.stopProfile("1");
     expect(mockFetch.mock.calls[0][0]).toBe("/api/profiles/1/stop");
-  });
-});
-
-// ── setClipboard ────────────────────────────────────────────────────────────
-
-describe("api.setClipboard", () => {
-  it("sends POST with text body", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
-    await api.setClipboard("1", "hello");
-    const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("/api/profiles/1/clipboard");
-    expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body)).toEqual({ text: "hello" });
-  });
-});
-
-// ── getClipboard ────────────────────────────────────────────────────────────
-
-describe("api.getClipboard", () => {
-  it("returns clipboard text", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ text: "copied" }));
-    const result = await api.getClipboard("1");
-    expect(result.text).toBe("copied");
   });
 });
 

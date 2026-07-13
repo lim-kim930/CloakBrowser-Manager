@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@novnc/novnc':
-        specifier: ^1.4.0
-        version: 1.4.0
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -400,9 +397,6 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
-
-  '@novnc/novnc@1.4.0':
-    resolution: {integrity: sha512-kW6ALMc5BuH08e/ond/I1naYcfjc19JYMN1EdtmgjjjzPGCjW8fMtVM3MwM6q7YLRjPlQ3orEvoKMgSS7RkEVQ==}
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
@@ -1678,8 +1672,6 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
-
-  '@novnc/novnc@1.4.0': {}
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 

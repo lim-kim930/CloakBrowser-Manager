@@ -1,94 +1,42 @@
-import { useState, useCallback, useEffect } from "react";
-import { Lock, PanelLeftClose, PanelLeft } from "lucide-react";
+import { useState, useCallback } from "react";
+import { PanelLeftClose, PanelLeft } from "lucide-react";
 import { useProfiles } from "./hooks/useProfiles";
-import { api, setOnUnauthorized, type ProfileCreateData } from "./lib/api";
+import { type ProfileCreateData } from "./lib/api";
 import { ProfileList } from "./components/ProfileList";
 import { ProfileForm } from "./components/ProfileForm";
-import { ProfileViewer } from "./components/ProfileViewer";
 import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
-import { LoginPage } from "./components/LoginPage";
+import { useBootstrap } from "./bootstrap/useBootstrap";
+import { PortConfigModal } from "./bootstrap/PortConfigModal";
+import { DownloadingScreen } from "./bootstrap/DownloadingScreen";
+import { BackendErrorScreen } from "./bootstrap/BackendErrorScreen";
 
-type AuthState = "checking" | "required" | "ok" | "error";
-type View = "empty" | "create" | "edit" | "view";
+type View = "empty" | "create" | "edit";
 
 export default function App() {
-  const [authState, setAuthState] = useState<AuthState>("checking");
-  const [authRequired, setAuthRequired] = useState(false);
+  const { state, probePort, savePort, retry } = useBootstrap();
 
-  useEffect(() => {
-    setOnUnauthorized(() => setAuthState("required"));
-
-    api.authStatus()
-      .then(({ auth_required, authenticated }) => {
-        setAuthRequired(auth_required);
-        if (!auth_required || authenticated) {
-          setAuthState("ok");
-        } else {
-          setAuthState("required");
-        }
-      })
-      .catch((err) => {
-        console.warn("[auth] status check failed:", err);
-        setAuthState("error");
-      });
-
-    return () => setOnUnauthorized(null);
-  }, []);
-
-  if (authState === "checking") {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-gray-500 text-sm">Loading...</div>
-      </div>
-    );
-  }
-
-  if (authState === "error") {
-    return (
-      <div className="h-screen flex items-center justify-center bg-surface-0">
-        <div className="text-center">
-          <p className="text-red-400 text-sm mb-2">Unable to reach the server</p>
-          <button
-            onClick={() => {
-              setAuthState("checking");
-              api.authStatus()
-                .then(({ auth_required, authenticated }) => {
-                  setAuthRequired(auth_required);
-                  setAuthState(!auth_required || authenticated ? "ok" : "required");
-                })
-                .catch(() => setAuthState("error"));
-            }}
-            className="text-xs text-gray-400 hover:text-gray-200 underline"
-          >
-            Retry
-          </button>
+  switch (state.phase) {
+    case "detecting":
+      return (
+        <div className="h-screen flex items-center justify-center">
+          <div className="text-gray-500 text-sm">Loading...</div>
         </div>
-      </div>
-    );
+      );
+    case "port-conflict":
+      return <PortConfigModal port={state.port} onProbe={probePort} onSave={savePort} />;
+    case "waiting-backend":
+      return <DownloadingScreen message="Starting backend service..." />;
+    case "downloading-binary":
+      return <DownloadingScreen message="Downloading browser core..." />;
+    case "backend-error":
+      return <BackendErrorScreen message={state.message} onRetry={retry} />;
+    case "ready":
+      return <AppContent />;
   }
-
-  if (authState === "required") {
-    return <LoginPage onSuccess={() => setAuthState("ok")} />;
-  }
-
-  return (
-    <AppContent
-      authRequired={authRequired}
-      onLogout={async () => {
-        await api.logout();
-        setAuthState("required");
-      }}
-    />
-  );
 }
 
-interface AppContentProps {
-  authRequired: boolean;
-  onLogout: () => void;
-}
-
-function AppContent({ authRequired, onLogout }: AppContentProps) {
+function AppContent() {
   const { profiles, loading, error, create, update, remove, launch, stop } = useProfiles();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
@@ -98,9 +46,8 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
-    const profile = profiles.find((p) => p.id === id);
-    setView(profile?.status === "running" ? "view" : "edit");
-  }, [profiles]);
+    setView("edit");
+  }, []);
 
   const handleNew = useCallback(() => {
     setSelectedId(null);
@@ -129,19 +76,13 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
 
   const handleLaunch = useCallback(async () => {
     if (!selectedId) return;
-    const result = await launch(selectedId);
-    if (result) setView("view");
+    await launch(selectedId);
   }, [selectedId, launch]);
 
   const handleStop = useCallback(async () => {
     if (!selectedId) return;
     await stop(selectedId);
-    setView("edit");
   }, [selectedId, stop]);
-
-  const handleVncDisconnect = useCallback(() => {
-    setView("edit");
-  }, []);
 
   if (loading) {
     return (
@@ -193,15 +134,6 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
                 onStop={handleStop}
               />
             )}
-            {authRequired && (
-              <button
-                onClick={onLogout}
-                className="text-gray-500 hover:text-gray-300 p-1"
-                title="Log out"
-              >
-                <Lock className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         </div>
 
@@ -239,16 +171,6 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
                 setSelectedId(null);
                 setView("empty");
               }}
-            />
-          )}
-
-          {view === "view" && selected && selected.status === "running" && (
-            <ProfileViewer
-              key={selected.id}
-              profileId={selected.id}
-              cdpUrl={selected.cdp_url}
-              clipboardSync={selected.clipboard_sync}
-              onDisconnect={handleVncDisconnect}
             />
           )}
         </div>
