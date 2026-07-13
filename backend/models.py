@@ -28,6 +28,7 @@ class ProfileCreate(BaseModel):
     color_scheme: Literal["light", "dark", "no-preference"] | None = None
     launch_args: list[str] = Field(default_factory=list)
     notes: str | None = None
+    kernel_id: str | None = None
     tags: list[TagCreate] | None = None
 
 
@@ -52,6 +53,7 @@ class ProfileUpdate(BaseModel):
     color_scheme: Literal["light", "dark", "no-preference"] | None = Field(default=None)
     launch_args: list[str] | None = None
     notes: str | None = Field(default=None)
+    kernel_id: str | None = Field(default=None)
     tags: list[TagCreate] | None = None
 
 
@@ -88,6 +90,7 @@ class ProfileResponse(BaseModel):
     color_scheme: str | None = None
     launch_args: list[str] = []
     notes: str | None = None
+    kernel_id: str | None = None
     user_data_dir: str
     created_at: str
     updated_at: str
@@ -104,7 +107,7 @@ class LaunchResponse(BaseModel):
 
 class StatusResponse(BaseModel):
     running_count: int
-    binary_version: str
+    binary_version: str | None
     profiles_total: int
 
 
@@ -114,7 +117,7 @@ class ProfileStatusResponse(BaseModel):
 
 
 class BinaryStatus(BaseModel):
-    state: Literal["downloading", "ready", "error"]
+    state: Literal["none", "downloading", "ready", "error"]
     version: str | None = None
     error: str | None = None
 

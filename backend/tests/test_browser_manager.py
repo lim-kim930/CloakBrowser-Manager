@@ -11,6 +11,8 @@ import socket
 
 from unittest.mock import AsyncMock, MagicMock
 
+from backend import database as db
+
 from backend.browser_manager import (
     BASE_CDP_PORT,
     CDP_PORT_RANGE,
@@ -18,6 +20,8 @@ from backend.browser_manager import (
     _normalize_proxy,
     _validate_proxy,
     BrowserManager,
+    KernelInvalidError,
+    KernelNotConfiguredError,
 )
 
 
@@ -268,7 +272,7 @@ def test_init_idempotent(tmp_path: Path):
 # ── Desktop launch behavior ──────────────────────────────────────────────────
 
 
-async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch, kernel_ready):
+async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch, installed_kernel):
     """Headed desktop launch must not pass viewport or env (cloakbrowser
     defaults to no_viewport; DISPLAY injection was VNC-only)."""
     from backend import browser_manager as bm
@@ -293,54 +297,44 @@ async def test_launch_headed_no_viewport_no_env(tmp_path, monkeypatch, kernel_re
     assert mgr.get_status("p1") == {"status": "running", "cdp_url": "/api/profiles/p1/cdp"}
 
 
-async def test_launch_raises_when_kernel_not_ready(tmp_path):
-    from backend import binary_status
-    from backend.browser_manager import BinaryNotReadyError
-
-    binary_status.tracker.mark_downloading()
-    mgr = BrowserManager()
-    with pytest.raises(BinaryNotReadyError):
-        await mgr.launch({"id": "x", "user_data_dir": str(tmp_path)})
-    assert "x" not in mgr._launching  # launch slot released
+# ── Kernel resolution ────────────────────────────────────────────────────────
 
 
-async def test_auto_launch_waits_for_kernel(tmp_db, monkeypatch):
-    import asyncio
+class TestKernelResolution:
+    async def test_launch_no_kernel_raises(self, tmp_db):
+        mgr = BrowserManager()
+        profile = db.create_profile(name="P")
+        with pytest.raises(KernelNotConfiguredError):
+            await mgr.launch(profile)
 
-    from backend import binary_status, database as db
+    async def test_launch_invalid_kernel_raises(self, tmp_db, installed_kernel):
+        import shutil
+        from backend import kernel_manager as km
+        shutil.rmtree(km.kernel_dir("1.0.0.0"))  # kernel files vanish
+        mgr = BrowserManager()
+        profile = db.create_profile(name="P")
+        with pytest.raises(KernelInvalidError, match="1.0.0.0"):
+            await mgr.launch(profile)
 
-    db.create_profile(name="Auto", auto_launch=True)
-    mgr = BrowserManager()
-    launched: list[str] = []
+    async def test_launch_pins_browser_version(self, tmp_db, installed_kernel):
+        import cloakbrowser
+        cloakbrowser.launch_persistent_context_async.return_value = MagicMock()
+        mgr = BrowserManager()
+        profile = db.create_profile(name="P")
+        await mgr.launch(profile)
+        kwargs = cloakbrowser.launch_persistent_context_async.call_args.kwargs
+        assert kwargs["browser_version"] == "1.0.0.0"
 
-    async def fake_launch(profile):
-        launched.append(profile["id"])
-
-    monkeypatch.setattr(mgr, "launch", fake_launch)
-    binary_status.tracker.mark_downloading()
-    task = asyncio.create_task(mgr.auto_launch_all())
-    await asyncio.sleep(0.05)
-    assert launched == []  # still waiting for the kernel
-    binary_status.tracker.mark_ready("0.0.0-test")
-    await asyncio.wait_for(task, timeout=5)
-    assert len(launched) == 1
-    binary_status.tracker.mark_downloading()
-
-
-async def test_auto_launch_aborts_on_kernel_error(tmp_db, monkeypatch):
-    import asyncio
-
-    from backend import binary_status, database as db
-
-    db.create_profile(name="Auto2", auto_launch=True)
-    mgr = BrowserManager()
-    launched: list[str] = []
-
-    async def fake_launch(profile):
-        launched.append(profile["id"])
-
-    monkeypatch.setattr(mgr, "launch", fake_launch)
-    binary_status.tracker.mark_error("no network")
-    await asyncio.wait_for(mgr.auto_launch_all(), timeout=5)
-    assert launched == []
-    binary_status.tracker.mark_downloading()
+    async def test_launch_profile_kernel_overrides_default(self, tmp_db, installed_kernel, tmp_path):
+        import cloakbrowser
+        cloakbrowser.launch_persistent_context_async.return_value = MagicMock()
+        from backend import kernel_manager as km
+        exe = km.kernel_exe("2.0.0.0")
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"fake")
+        k2 = db.create_kernel("2.0.0.0", "downloaded")
+        mgr = BrowserManager()
+        profile = db.create_profile(name="P", kernel_id=k2["id"])
+        await mgr.launch(profile)
+        kwargs = cloakbrowser.launch_persistent_context_async.call_args.kwargs
+        assert kwargs["browser_version"] == "2.0.0.0"

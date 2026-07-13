@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import binary_status, database as db
-from .browser_manager import BinaryNotReadyError, BrowserManager
+from .browser_manager import BrowserManager, KernelInvalidError, KernelNotConfiguredError
 from .models import (
     BinaryStatus,
     HealthResponse,
@@ -125,7 +125,6 @@ def request_shutdown() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    binary_status.start_background_ensure()
     browser_mgr._auto_launch_task = asyncio.create_task(browser_mgr.auto_launch_all())
     logger.info("CloakBrowser Manager started")
     yield
@@ -246,8 +245,10 @@ async def launch_profile(profile_id: str):
 
     try:
         await browser_mgr.launch(profile)
-    except BinaryNotReadyError:
-        raise HTTPException(status_code=503, detail="Browser core not ready")
+    except KernelNotConfiguredError:
+        raise HTTPException(status_code=503, detail="no_kernel")
+    except KernelInvalidError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -283,12 +284,11 @@ async def get_profile_status(profile_id: str):
 
 @app.get("/api/status", response_model=StatusResponse)
 async def get_system_status():
-    from cloakbrowser.config import CHROMIUM_VERSION
-
     profiles = db.list_profiles()
+    default = db.get_default_kernel()
     return StatusResponse(
         running_count=len(browser_mgr.running),
-        binary_version=CHROMIUM_VERSION,
+        binary_version=default["version"] if default else None,
         profiles_total=len(profiles),
     )
 
@@ -302,7 +302,7 @@ async def health():
     return HealthResponse(
         status="ok",
         version=MANAGER_VERSION,
-        binary=BinaryStatus(**binary_status.tracker.snapshot()),
+        binary=BinaryStatus(**binary_status.library_snapshot()),
     )
 
 

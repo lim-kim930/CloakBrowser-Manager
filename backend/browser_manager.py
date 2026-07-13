@@ -13,7 +13,7 @@ from typing import Any
 
 from cloakbrowser import launch_persistent_context_async
 
-from . import binary_status
+from . import database as db, kernel_manager
 
 logger = logging.getLogger("cloakbrowser.manager.browser")
 
@@ -141,8 +141,12 @@ def _init_profile_defaults(user_data_dir: Path) -> None:
         logger.info("Set DuckDuckGo as default search for %s", user_data_dir.name)
 
 
-class BinaryNotReadyError(RuntimeError):
-    """Launch attempted before the Chromium kernel finished downloading."""
+class KernelNotConfiguredError(RuntimeError):
+    """No kernel in the library (or the profile's kernel row is gone)."""
+
+
+class KernelInvalidError(RuntimeError):
+    """The kernel's files are missing on disk (moved/deleted by the user)."""
 
 
 BASE_CDP_PORT = 5100
@@ -164,10 +168,25 @@ class BrowserManager:
         self._next_cdp_port = BASE_CDP_PORT
         self._auto_launch_task: asyncio.Task | None = None
 
+    def _resolve_kernel(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Profile's kernel, falling back to the default. Validates files exist."""
+        kernel = None
+        if profile.get("kernel_id"):
+            kernel = db.get_kernel(profile["kernel_id"])
+        if kernel is None:
+            kernel = db.get_default_kernel()
+        if kernel is None:
+            raise KernelNotConfiguredError("No browser kernel configured")
+        if not kernel_manager.kernel_is_valid(kernel["version"]):
+            raise KernelInvalidError(
+                f"Kernel {kernel['version']} is missing on disk — "
+                f"manage kernels in Settings"
+            )
+        return kernel
+
     async def launch(self, profile: dict[str, Any]) -> RunningProfile:
         """Launch a browser instance for the given profile."""
-        if binary_status.tracker.snapshot()["state"] != "ready":
-            raise BinaryNotReadyError("Browser core not ready")
+        kernel = self._resolve_kernel(profile)
 
         profile_id = profile["id"]
 
@@ -202,6 +221,7 @@ class BrowserManager:
             # to no_viewport so outerWidth >= innerWidth stays consistent.
             context = await launch_persistent_context_async(
                 user_data_dir=profile["user_data_dir"],
+                browser_version=kernel["version"],
                 headless=bool(profile.get("headless", False)),
                 proxy=proxy,
                 args=extra_args,
@@ -272,23 +292,15 @@ class BrowserManager:
 
     async def auto_launch_all(self):
         """Launch all profiles with auto_launch=True. Called on startup."""
-        from . import database as db
-
         profiles = db.list_profiles()
         auto_profiles = [p for p in profiles if p.get("auto_launch")]
         if not auto_profiles:
             logger.info("No profiles configured for auto-launch")
             return
 
-        # Wait for the kernel — on first run it may still be downloading.
-        while True:
-            state = binary_status.tracker.snapshot()["state"]
-            if state == "ready":
-                break
-            if state == "error":
-                logger.error("Auto-launch aborted: browser core failed to download")
-                return
-            await asyncio.sleep(1)
+        if db.get_default_kernel() is None:
+            logger.info("Auto-launch skipped: no kernel configured")
+            return
 
         logger.info("Auto-launching %d profile(s)...", len(auto_profiles))
         for profile in auto_profiles:

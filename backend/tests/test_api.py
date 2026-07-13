@@ -146,36 +146,30 @@ def test_launch_already_running(app_client: TestClient):
     main.browser_mgr.running.pop(pid, None)
 
 
-def test_launch_invalid_proxy_400(app_client: TestClient):
+def test_launch_invalid_proxy_400(app_client: TestClient, monkeypatch):
     """ValueError from browser_mgr.launch should map to 400."""
     create = app_client.post("/api/profiles", json={"name": "BadProxy"})
     pid = create.json()["id"]
-    main.browser_mgr.launch = AsyncMock(side_effect=ValueError("Invalid proxy scheme 'ftp'"))
+    monkeypatch.setattr(
+        main.browser_mgr, "launch",
+        AsyncMock(side_effect=ValueError("Invalid proxy scheme 'ftp'")),
+    )
     resp = app_client.post(f"/api/profiles/{pid}/launch")
     assert resp.status_code == 400
     assert "ftp" in resp.json()["detail"]
 
 
-def test_launch_failure_500(app_client: TestClient):
+def test_launch_failure_500(app_client: TestClient, monkeypatch):
     """Generic exception from browser_mgr.launch should map to 500."""
     create = app_client.post("/api/profiles", json={"name": "Crash"})
     pid = create.json()["id"]
-    main.browser_mgr.launch = AsyncMock(side_effect=RuntimeError("driver crashed"))
+    monkeypatch.setattr(
+        main.browser_mgr, "launch",
+        AsyncMock(side_effect=RuntimeError("driver crashed")),
+    )
     resp = app_client.post(f"/api/profiles/{pid}/launch")
     assert resp.status_code == 500
     assert resp.json()["detail"] == "Failed to launch browser"
-
-
-def test_launch_kernel_not_ready_503(app_client: TestClient):
-    """BinaryNotReadyError from launch maps to 503."""
-    from backend.browser_manager import BinaryNotReadyError
-
-    create = app_client.post("/api/profiles", json={"name": "NotReady"})
-    pid = create.json()["id"]
-    main.browser_mgr.launch = AsyncMock(side_effect=BinaryNotReadyError("Browser core not ready"))
-    resp = app_client.post(f"/api/profiles/{pid}/launch")
-    assert resp.status_code == 503
-    assert resp.json()["detail"] == "Browser core not ready"
 
 
 def test_stop_not_running(app_client: TestClient):
@@ -196,7 +190,7 @@ def test_system_status(app_client: TestClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["running_count"] == 0
-    assert data["binary_version"] == "0.0.0-test"
+    assert data["binary_version"] == "1.0.0.0"
     assert data["profiles_total"] >= 1
 
 
@@ -385,39 +379,37 @@ def test_cdp_json_version_chrome_unreachable(app_client: TestClient):
     main.browser_mgr.running.pop(pid, None)
 
 
-# ── Health ──────────────────────────────────────────────────────────────────
+# ── Launch kernel errors / Health ────────────────────────────────────────────
 
 
-def test_health_ready(app_client: TestClient):
-    from backend import binary_status
+class TestLaunchKernelErrors:
+    def test_launch_without_kernel_503(self, tmp_db, monkeypatch):
+        """app_client includes installed_kernel; build a bare client instead."""
+        from unittest.mock import AsyncMock
+        from starlette.testclient import TestClient
+        from backend import main
 
-    binary_status.tracker.mark_ready("135.0.1")
-    resp = app_client.get("/api/health")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "ok"
-    assert data["version"] == main.MANAGER_VERSION
-    assert data["binary"] == {"state": "ready", "version": "135.0.1", "error": None}
+        monkeypatch.setattr(main.browser_mgr, "cleanup_all", AsyncMock())
+        with TestClient(main.app) as client:
+            p = client.post("/api/profiles", json={"name": "P"}).json()
+            resp = client.post(f"/api/profiles/{p['id']}/launch")
+            assert resp.status_code == 503
+            assert resp.json()["detail"] == "no_kernel"
 
+    def test_health_reports_none_when_empty(self, tmp_db, monkeypatch):
+        from unittest.mock import AsyncMock
+        from starlette.testclient import TestClient
+        from backend import main
 
-def test_health_downloading(app_client: TestClient):
-    from backend import binary_status
+        monkeypatch.setattr(main.browser_mgr, "cleanup_all", AsyncMock())
+        with TestClient(main.app) as client:
+            body = client.get("/api/health").json()
+            assert body["binary"]["state"] == "none"
 
-    binary_status.tracker.mark_downloading()
-    resp = app_client.get("/api/health")
-    assert resp.json()["binary"]["state"] == "downloading"
-    binary_status.tracker.mark_ready("0.0.0-test")  # restore for app_client teardown
-
-
-def test_health_error(app_client: TestClient):
-    from backend import binary_status
-
-    binary_status.tracker.mark_error("disk full")
-    resp = app_client.get("/api/health")
-    data = resp.json()
-    assert data["binary"]["state"] == "error"
-    assert data["binary"]["error"] == "disk full"
-    binary_status.tracker.mark_ready("0.0.0-test")
+    def test_health_ready_with_kernel(self, app_client):
+        body = app_client.get("/api/health").json()
+        assert body["binary"]["state"] == "ready"
+        assert body["binary"]["version"] == "1.0.0.0"
 
 
 # ── Shutdown ────────────────────────────────────────────────────────────────
