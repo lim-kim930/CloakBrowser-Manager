@@ -78,6 +78,7 @@ def init_db():
                 color_scheme TEXT,
                 notes TEXT,
                 user_data_dir TEXT NOT NULL,
+                kernel_id TEXT REFERENCES kernels(id) ON DELETE SET NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -87,6 +88,15 @@ def init_db():
                 tag TEXT NOT NULL,
                 color TEXT,
                 PRIMARY KEY (profile_id, tag)
+            );
+
+            CREATE TABLE IF NOT EXISTS kernels (
+                id TEXT PRIMARY KEY,
+                version TEXT NOT NULL UNIQUE,
+                source TEXT NOT NULL,
+                source_path TEXT,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
             );
         """)
         conn.commit()
@@ -101,6 +111,12 @@ def init_db():
             conn.commit()
         if "auto_launch" not in cols:
             conn.execute("ALTER TABLE profiles ADD COLUMN auto_launch BOOLEAN DEFAULT 0")
+            conn.commit()
+        if "kernel_id" not in cols:
+            conn.execute(
+                "ALTER TABLE profiles ADD COLUMN kernel_id TEXT "
+                "REFERENCES kernels(id) ON DELETE SET NULL"
+            )
             conn.commit()
 
 
@@ -127,8 +143,8 @@ def create_profile(
                 user_agent, screen_width, screen_height, gpu_vendor, gpu_renderer,
                 hardware_concurrency, humanize, human_preset, headless, geoip,
                 clipboard_sync, auto_launch, color_scheme, launch_args, notes,
-                user_data_dir, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                user_data_dir, kernel_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 profile_id, name, seed,
                 fields.get("proxy"),
@@ -150,7 +166,7 @@ def create_profile(
                 fields.get("color_scheme"),
                 json.dumps(fields.get("launch_args") or []),
                 fields.get("notes"),
-                user_data_dir, now, now,
+                user_data_dir, fields.get("kernel_id"), now, now,
             ),
         )
         for t in tags:
@@ -213,6 +229,7 @@ def update_profile(profile_id: str, **fields: Any) -> dict[str, Any] | None:
         "user_agent", "screen_width", "screen_height", "gpu_vendor", "gpu_renderer",
         "hardware_concurrency", "humanize", "human_preset", "headless", "geoip",
         "clipboard_sync", "auto_launch", "color_scheme", "launch_args", "notes",
+        "kernel_id",
     ):
         if col in fields:
             update_cols.append(f"{col} = ?")
@@ -247,3 +264,82 @@ def delete_profile(profile_id: str) -> bool:
         cursor = conn.execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+
+# ── Kernels ───────────────────────────────────────────────────────────────────
+
+
+def _kernel_row(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    kernel = dict(row)
+    kernel["is_default"] = bool(kernel["is_default"])
+    count = conn.execute(
+        "SELECT COUNT(*) FROM profiles WHERE kernel_id = ?", (kernel["id"],)
+    ).fetchone()[0]
+    kernel["profile_count"] = count
+    return kernel
+
+
+def create_kernel(version: str, source: str, source_path: str | None = None) -> dict[str, Any]:
+    _ensure_configured()
+    kernel_id = str(uuid.uuid4())
+    with get_db() as conn:
+        existing = conn.execute("SELECT COUNT(*) FROM kernels").fetchone()[0]
+        conn.execute(
+            "INSERT INTO kernels (id, version, source, source_path, is_default, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (kernel_id, version, source, source_path, 1 if existing == 0 else 0, _now()),
+        )
+        conn.commit()
+    return get_kernel(kernel_id)  # type: ignore[return-value]
+
+
+def get_kernel(kernel_id: str) -> dict[str, Any] | None:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM kernels WHERE id = ?", (kernel_id,)).fetchone()
+        return _kernel_row(conn, row) if row else None
+
+
+def get_kernel_by_version(version: str) -> dict[str, Any] | None:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM kernels WHERE version = ?", (version,)).fetchone()
+        return _kernel_row(conn, row) if row else None
+
+
+def get_default_kernel() -> dict[str, Any] | None:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM kernels WHERE is_default = 1").fetchone()
+        return _kernel_row(conn, row) if row else None
+
+
+def list_kernels() -> list[dict[str, Any]]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM kernels ORDER BY created_at").fetchall()
+        return [_kernel_row(conn, row) for row in rows]
+
+
+def set_default_kernel(kernel_id: str) -> bool:
+    with get_db() as conn:
+        exists = conn.execute("SELECT 1 FROM kernels WHERE id = ?", (kernel_id,)).fetchone()
+        if not exists:
+            return False
+        conn.execute("UPDATE kernels SET is_default = 0")
+        conn.execute("UPDATE kernels SET is_default = 1 WHERE id = ?", (kernel_id,))
+        conn.commit()
+        return True
+
+
+def delete_kernel(kernel_id: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute("SELECT is_default FROM kernels WHERE id = ?", (kernel_id,)).fetchone()
+        if not row:
+            return False
+        was_default = bool(row["is_default"])
+        conn.execute("DELETE FROM kernels WHERE id = ?", (kernel_id,))
+        if was_default:
+            remaining = conn.execute(
+                "SELECT id FROM kernels ORDER BY created_at LIMIT 1"
+            ).fetchone()
+            if remaining:
+                conn.execute("UPDATE kernels SET is_default = 1 WHERE id = ?", (remaining["id"],))
+        conn.commit()
+        return True

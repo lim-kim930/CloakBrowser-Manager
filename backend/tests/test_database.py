@@ -272,3 +272,65 @@ def test_lazy_auto_configure(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(db, "default_data_dir", lambda: tmp_path / "auto")
     db.init_db()
     assert (tmp_path / "auto" / "profiles.db").exists()
+
+
+# ── Kernels ───────────────────────────────────────────────────────────────────
+
+
+class TestKernels:
+    def test_create_first_kernel_becomes_default(self, tmp_db):
+        k = db.create_kernel("146.0.7680.177.5", "downloaded")
+        assert k["version"] == "146.0.7680.177.5"
+        assert k["source"] == "downloaded"
+        assert k["source_path"] is None
+        assert k["is_default"] is True
+
+    def test_second_kernel_not_default(self, tmp_db):
+        db.create_kernel("1.0.0.0", "downloaded")
+        k2 = db.create_kernel("2.0.0.0", "imported", source_path=r"D:\kernels\two")
+        assert k2["is_default"] is False
+        assert k2["source_path"] == r"D:\kernels\two"
+
+    def test_duplicate_version_rejected(self, tmp_db):
+        import sqlite3
+        db.create_kernel("1.0.0.0", "downloaded")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.create_kernel("1.0.0.0", "imported", source_path="x")
+
+    def test_list_kernels_profile_count(self, tmp_db):
+        k = db.create_kernel("1.0.0.0", "downloaded")
+        db.create_profile(name="P1", kernel_id=k["id"])
+        db.create_profile(name="P2", kernel_id=k["id"])
+        db.create_profile(name="P3")  # follows default, does not count as reference
+        kernels = db.list_kernels()
+        assert len(kernels) == 1
+        assert kernels[0]["profile_count"] == 2
+
+    def test_set_default_kernel_moves_flag(self, tmp_db):
+        k1 = db.create_kernel("1.0.0.0", "downloaded")
+        k2 = db.create_kernel("2.0.0.0", "downloaded")
+        assert db.set_default_kernel(k2["id"]) is True
+        assert db.get_default_kernel()["id"] == k2["id"]
+        assert db.get_kernel(k1["id"])["is_default"] is False
+
+    def test_set_default_unknown_id(self, tmp_db):
+        assert db.set_default_kernel("nope") is False
+
+    def test_delete_kernel_reassigns_default(self, tmp_db):
+        k1 = db.create_kernel("1.0.0.0", "downloaded")
+        k2 = db.create_kernel("2.0.0.0", "downloaded")
+        assert db.delete_kernel(k1["id"]) is True
+        assert db.get_default_kernel()["id"] == k2["id"]
+
+    def test_delete_kernel_nulls_profile_reference(self, tmp_db):
+        k = db.create_kernel("1.0.0.0", "downloaded")
+        p = db.create_profile(name="P", kernel_id=k["id"])
+        db.delete_kernel(k["id"])
+        assert db.get_profile(p["id"])["kernel_id"] is None
+
+    def test_profile_kernel_id_roundtrip(self, tmp_db):
+        k = db.create_kernel("1.0.0.0", "downloaded")
+        p = db.create_profile(name="P", kernel_id=k["id"])
+        assert p["kernel_id"] == k["id"]
+        p2 = db.update_profile(p["id"], kernel_id=None)
+        assert p2["kernel_id"] is None
