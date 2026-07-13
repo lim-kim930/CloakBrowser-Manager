@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { api } from "./api";
+import { api, setApiBase } from "./api";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -137,5 +137,34 @@ describe("error handling", () => {
       json: () => Promise.reject(new Error("not json")),
     });
     await expect(api.getStatus()).rejects.toThrow("Internal Server Error");
+  });
+});
+
+// ── setApiBase ──────────────────────────────────────────────────────────────
+
+describe("setApiBase", () => {
+  it("prefixes all requests with the base URL", async () => {
+    setApiBase("http://127.0.0.1:9999");
+    mockFetch.mockResolvedValueOnce(jsonResponse([]));
+    await api.listProfiles();
+    expect(mockFetch.mock.calls[0][0]).toBe("http://127.0.0.1:9999/api/profiles");
+    setApiBase("");
+  });
+});
+
+// ── health ──────────────────────────────────────────────────────────────────
+
+describe("api.health", () => {
+  it("fetches /api/health", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        status: "ok",
+        version: "0.1.0",
+        binary: { state: "ready", version: "135.0", error: null },
+      }),
+    );
+    const h = await api.health();
+    expect(h.binary.state).toBe("ready");
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/health");
   });
 });

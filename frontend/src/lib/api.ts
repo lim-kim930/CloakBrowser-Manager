@@ -82,6 +82,30 @@ class ApiError extends Error {
   }
 }
 
+// Base URL for all requests. "" in web dev (Vite proxies /api); set to
+// "http://127.0.0.1:{port}" by the bootstrap layer under Tauri.
+let _base = "";
+
+export function setApiBase(url: string) {
+  _base = url.replace(/\/+$/, "");
+}
+
+export function getApiBase(): string {
+  return _base;
+}
+
+export interface BinaryStatus {
+  state: "downloading" | "ready" | "error";
+  version: string | null;
+  error: string | null;
+}
+
+export interface Health {
+  status: string;
+  version: string;
+  binary: BinaryStatus;
+}
+
 // Global 401 callback — set by App to trigger login page on auth failure
 let _onUnauthorized: (() => void) | null = null;
 export function setOnUnauthorized(cb: (() => void) | null) {
@@ -92,7 +116,7 @@ async function request<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(_base + path, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -146,6 +170,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/profiles/${id}/stop`, { method: "POST" }),
 
   getStatus: () => request<SystemStatus>("/api/status"),
+
+  health: () => request<Health>("/api/health"),
 
   setClipboard: (id: string, text: string) =>
     request<{ ok: boolean }>(`/api/profiles/${id}/clipboard`, {
