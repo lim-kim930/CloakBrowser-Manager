@@ -24,6 +24,7 @@ export interface Profile {
   color_scheme: string | null;
   launch_args: string[];
   notes: string | null;
+  kernel_id: string | null;
   user_data_dir: string;
   created_at: string;
   updated_at: string;
@@ -53,6 +54,7 @@ export interface ProfileCreateData {
   color_scheme?: string | null;
   launch_args?: string[];
   notes?: string | null;
+  kernel_id?: string | null;
   tags?: { tag: string; color: string | null }[];
 }
 
@@ -90,7 +92,7 @@ export function getApiBase(): string {
 }
 
 export interface BinaryStatus {
-  state: "downloading" | "ready" | "error";
+  state: "none" | "downloading" | "ready" | "error";
   version: string | null;
   error: string | null;
 }
@@ -99,6 +101,22 @@ export interface Health {
   status: string;
   version: string;
   binary: BinaryStatus;
+}
+
+export interface Kernel {
+  id: string;
+  version: string;
+  source: "imported" | "downloaded";
+  source_path: string | null;
+  is_default: boolean;
+  valid: boolean;
+  profile_count: number;
+  created_at: string;
+}
+
+export interface DownloadStatus {
+  state: "idle" | "downloading" | "ready" | "error";
+  error: string | null;
 }
 
 async function request<T>(
@@ -145,4 +163,23 @@ export const api = {
   getStatus: () => request<SystemStatus>("/api/status"),
 
   health: () => request<Health>("/api/health"),
+
+  listKernels: () => request<Kernel[]>("/api/kernels"),
+
+  importKernel: (path: string) =>
+    request<Kernel>("/api/kernels/import", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  downloadKernel: () =>
+    request<{ ok: boolean }>("/api/kernels/download", { method: "POST" }),
+
+  downloadStatus: () => request<DownloadStatus>("/api/kernels/download/status"),
+
+  setDefaultKernel: (id: string) =>
+    request<{ ok: boolean }>(`/api/kernels/${id}/default`, { method: "PUT" }),
+
+  deleteKernel: (id: string) =>
+    request<{ ok: boolean }>(`/api/kernels/${id}`, { method: "DELETE" }),
 };

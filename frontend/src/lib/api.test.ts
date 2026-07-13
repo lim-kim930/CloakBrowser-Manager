@@ -145,3 +145,35 @@ describe("api.health", () => {
     expect(mockFetch.mock.calls[0][0]).toBe("/api/health");
   });
 });
+
+// ── kernel endpoints ──────────────────────────────────────────────────────────
+
+describe("kernel endpoints", () => {
+  it("listKernels GETs /api/kernels", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse([]));
+    await api.listKernels();
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/kernels");
+  });
+
+  it("importKernel POSTs path", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ id: "k1" }));
+    await api.importKernel("D:\\kernels\\chromium-1.0.0.0");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/kernels/import");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body).path).toBe("D:\\kernels\\chromium-1.0.0.0");
+  });
+
+  it("setDefaultKernel PUTs /default", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    await api.setDefaultKernel("k1");
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/kernels/k1/default");
+    expect(mockFetch.mock.calls[0][1].method).toBe("PUT");
+  });
+
+  it("deleteKernel DELETEs", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    await api.deleteKernel("k1");
+    expect(mockFetch.mock.calls[0][1].method).toBe("DELETE");
+  });
+});
