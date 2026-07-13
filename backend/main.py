@@ -26,6 +26,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import binary_status, database as db
 from .browser_manager import BrowserManager, KernelInvalidError, KernelNotConfiguredError
+from .kernels_api import router as kernels_router
 from .models import (
     BinaryStatus,
     HealthResponse,
@@ -147,6 +148,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(kernels_router)
 
 
 # ── Profile CRUD ──────────────────────────────────────────────────────────────

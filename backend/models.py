@@ -126,3 +126,23 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     binary: BinaryStatus
+
+
+class KernelResponse(BaseModel):
+    id: str
+    version: str
+    source: Literal["imported", "downloaded"]
+    source_path: str | None = None
+    is_default: bool
+    valid: bool
+    profile_count: int
+    created_at: str
+
+
+class KernelImportRequest(BaseModel):
+    path: str
+
+
+class DownloadStatusResponse(BaseModel):
+    state: Literal["idle", "downloading", "ready", "error"]
+    error: str | None = None
