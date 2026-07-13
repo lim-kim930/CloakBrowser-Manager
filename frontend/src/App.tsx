@@ -1,9 +1,11 @@
 import { useState, useCallback } from "react";
-import { PanelLeftClose, PanelLeft } from "lucide-react";
+import { PanelLeftClose, PanelLeft, Settings } from "lucide-react";
 import { useProfiles } from "./hooks/useProfiles";
+import { useKernels } from "./hooks/useKernels";
 import { type ProfileCreateData } from "./lib/api";
 import { ProfileList } from "./components/ProfileList";
 import { ProfileForm } from "./components/ProfileForm";
+import { SettingsPage } from "./components/SettingsPage";
 import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { useBootstrap } from "./bootstrap/useBootstrap";
@@ -36,9 +38,11 @@ export default function App() {
 
 function AppContent() {
   const { profiles, loading, error, create, update, remove, launch, stop } = useProfiles();
+  const kernelLib = useKernels();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [page, setPage] = useState<"profiles" | "settings">("profiles");
 
   const selected = profiles.find((p) => p.id === selectedId) ?? null;
 
@@ -132,6 +136,13 @@ function AppContent() {
                 onStop={handleStop}
               />
             )}
+            <button
+              onClick={() => setPage(page === "settings" ? "profiles" : "settings")}
+              className="text-gray-500 hover:text-gray-300 p-1"
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
@@ -142,34 +153,50 @@ function AppContent() {
           </div>
         )}
 
+        {/* Empty kernel library banner */}
+        {!kernelLib.loading && kernelLib.kernels.length === 0 && page !== "settings" && (
+          <div className="px-4 py-2 bg-amber-600/15 border-b border-amber-600/30 text-amber-400 text-sm flex items-center justify-between">
+            <span>No browser kernel configured — profiles cannot launch yet.</span>
+            <button className="underline" onClick={() => setPage("settings")}>
+              Open Settings
+            </button>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
-          {view === "empty" && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <p className="text-gray-500 text-sm">Select a profile or create a new one</p>
-              </div>
-            </div>
-          )}
+          {page === "settings" ? (
+            <SettingsPage kernelLib={kernelLib} />
+          ) : (
+            <>
+              {view === "empty" && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <p className="text-gray-500 text-sm">Select a profile or create a new one</p>
+                  </div>
+                </div>
+              )}
 
-          {view === "create" && (
-            <ProfileForm
-              profile={null}
-              onSave={handleCreate}
-              onCancel={() => setView("empty")}
-            />
-          )}
+              {view === "create" && (
+                <ProfileForm
+                  profile={null}
+                  onSave={handleCreate}
+                  onCancel={() => setView("empty")}
+                />
+              )}
 
-          {view === "edit" && selected && (
-            <ProfileForm
-              profile={selected}
-              onSave={handleUpdate}
-              onDelete={handleDelete}
-              onCancel={() => {
-                setSelectedId(null);
-                setView("empty");
-              }}
-            />
+              {view === "edit" && selected && (
+                <ProfileForm
+                  profile={selected}
+                  onSave={handleUpdate}
+                  onDelete={handleDelete}
+                  onCancel={() => {
+                    setSelectedId(null);
+                    setView("empty");
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
