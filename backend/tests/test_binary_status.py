@@ -79,6 +79,24 @@ class TestDownloadRunner:
         assert "network down" in snap["error"]
         binary_status.download._set("idle", None)
 
+    def test_run_download_registration_failure_sets_error(self, tmp_db, tmp_path, monkeypatch):
+        exe = tmp_path / "chromium-9.9.9.9" / "chrome.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"fake")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("db locked")
+
+        # binary_status imports database as `db`, so patch the attribute there.
+        monkeypatch.setattr(binary_status.db, "create_kernel", boom)
+        try:
+            binary_status.run_download(binary_status.download, lambda: str(exe))
+            snap = binary_status.download.snapshot()
+            assert snap["state"] == "error"
+            assert "db locked" in snap["error"]
+        finally:
+            binary_status.download._set("idle", None)
+
     def test_start_rejects_concurrent(self, tmp_db, monkeypatch):
         binary_status.download._set("downloading", None)
         try:

@@ -74,8 +74,13 @@ def run_download(tracker: DownloadTracker, ensure_fn: Callable[[], str]) -> None
     if version is None:
         tracker._set("error", f"Downloaded kernel has unexpected path layout: {exe_path}")
         return
-    if not db.get_kernel_by_version(version):
-        db.create_kernel(version, "downloaded")
+    try:
+        if not db.get_kernel_by_version(version):
+            db.create_kernel(version, "downloaded")
+    except Exception as exc:  # noqa: BLE001 — surface any registration failure to the UI
+        logger.error("Kernel registration failed for %s: %s", version, exc)
+        tracker._set("error", f"Kernel {version} downloaded but could not be registered: {exc}")
+        return
     tracker._set("ready", None)
     logger.info("Kernel %s downloaded and registered", version)
 
