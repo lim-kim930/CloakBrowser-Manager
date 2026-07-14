@@ -99,8 +99,8 @@ non-blocking.
       from the user-selected import directory (only when the dir name doesn't carry the
       version). Acceptable for a localhost single-user app; document it.
 - [ ] `conftest.py`: drop the dead `CHROMIUM_VERSION` mock and its stale comment.
-- [ ] `frontend/tsconfig.tsbuildinfo` is tracked — `git rm --cached` + `.gitignore` entry
-      (every `pnpm build` dirties the tree).
+- [x] `frontend/tsconfig.tsbuildinfo` is tracked — `git rm --cached` + `.gitignore` entry
+      (every `pnpm build` dirties the tree). — Done 2026-07-14.
 - [ ] Vitest: register jest-dom once via `setupFiles` instead of per-file imports
       (SettingsPage.test.tsx / ProfileForm.test.tsx pattern).
 
