@@ -81,6 +81,40 @@ class TestImportKernel:
         kernel = km.import_kernel(str(d))
         assert kernel["version"] == "1.2.3.4"
 
+    def test_import_replaces_dangling_link(self, cache, tmp_db, tmp_path):
+        """A link whose target was deleted evades exists() — must still be replaced."""
+        import shutil
+
+        old = make_kernel_dir(tmp_path / "old", "chromium-1.2.3.4")
+        km.create_link("1.2.3.4", old)
+        shutil.rmtree(old)  # link now dangles
+        new = make_kernel_dir(tmp_path / "new", "chromium-1.2.3.4")
+        kernel = km.import_kernel(str(new))
+        assert kernel["version"] == "1.2.3.4"
+        assert km.kernel_exe("1.2.3.4").exists()
+
+    def test_import_cache_copy_adopts_in_place(self, cache, tmp_db):
+        """Importing the cache slot itself (pre-library download) registers it
+        as downloaded instead of trying to replace the directory with a link."""
+        exe = km.kernel_exe("2.0.0.0")
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"fake")
+        kernel = km.import_kernel(str(km.kernel_dir("2.0.0.0")))
+        assert kernel["source"] == "downloaded"
+        assert kernel["source_path"] is None
+        assert km.kernel_is_valid("2.0.0.0")
+        assert not km._is_link(km.kernel_dir("2.0.0.0"))  # still a real dir
+
+    def test_import_other_copy_of_cached_version_rejected(self, cache, tmp_db, tmp_path):
+        """Cache slot holds a real dir of the same version → clear error, no rmdir."""
+        exe = km.kernel_exe("2.0.0.0")
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"fake")
+        d = make_kernel_dir(tmp_path, "chromium-2.0.0.0")
+        with pytest.raises(km.KernelImportError, match="cache"):
+            km.import_kernel(str(d))
+        assert km.kernel_exe("2.0.0.0").exists()  # cached copy untouched
+
 
 class TestRemoveKernelFiles:
     def test_remove_imported_keeps_source(self, cache, tmp_db, tmp_path):
@@ -97,6 +131,17 @@ class TestRemoveKernelFiles:
         kernel = db.create_kernel("2.0.0.0", "downloaded")
         km.remove_kernel_files(kernel)
         assert not (cache / "chromium-2.0.0.0").exists()
+
+    def test_remove_imported_dangling_link(self, cache, tmp_db, tmp_path):
+        """A dangling link (user deleted the source dir) must still be removed."""
+        import os
+        import shutil
+
+        d = make_kernel_dir(tmp_path, "chromium-1.2.3.4")
+        kernel = km.import_kernel(str(d))
+        shutil.rmtree(d)  # link now dangles
+        km.remove_kernel_files(kernel)
+        assert not os.path.lexists(km.kernel_dir("1.2.3.4"))
 
 
 class TestValidity:

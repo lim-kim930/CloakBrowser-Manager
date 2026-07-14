@@ -152,6 +152,26 @@ app.add_middleware(
 app.include_router(kernels_router)
 
 
+async def _unhandled_error_response(request: Request, exc: Exception) -> JSONResponse:
+    """JSON 500 that carries CORS headers for allowed origins.
+
+    Unhandled exceptions are answered by Starlette's ServerErrorMiddleware,
+    which sits OUTSIDE CORSMiddleware — its default plain 500 has no
+    Access-Control-Allow-Origin, so the Tauri WebView blocks the response
+    and fetch surfaces an opaque "Failed to fetch" instead of the error.
+    """
+    response = JSONResponse(
+        {"detail": f"Internal server error: {exc}"}, status_code=500
+    )
+    origin = request.headers.get("origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    return response
+
+
+app.add_exception_handler(Exception, _unhandled_error_response)
+
+
 # ── Profile CRUD ──────────────────────────────────────────────────────────────
 
 

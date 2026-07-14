@@ -39,6 +39,30 @@ class TestKernelsApi:
         assert resp.status_code == 400
         assert "directory" in resp.json()["detail"]
 
+    def test_import_cache_copy_adopts_as_downloaded(self, app_client):
+        """Pre-library download on disk, no DB row: importing the cache dir
+        itself must register it instead of erroring (upgrade path)."""
+        exe = km.kernel_exe("3.0.0.0")
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_bytes(b"fake")
+        resp = app_client.post(
+            "/api/kernels/import", json={"path": str(km.kernel_dir("3.0.0.0"))}
+        )
+        assert resp.status_code == 201
+        assert resp.json()["source"] == "downloaded"
+        assert resp.json()["valid"] is True
+
+    def test_import_conflicting_cached_version_400(self, app_client, tmp_path):
+        """Same version already on disk in the cache (real dir, no DB row):
+        importing another copy must 400 with guidance, not crash with 500."""
+        exe = km.kernel_exe("3.0.0.0")
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_bytes(b"fake")
+        d = make_kernel_dir(tmp_path, "chromium-3.0.0.0")
+        resp = app_client.post("/api/kernels/import", json={"path": str(d)})
+        assert resp.status_code == 400
+        assert "cache" in resp.json()["detail"]
+
     def test_set_default(self, app_client, tmp_path):
         d = make_kernel_dir(tmp_path, "chromium-3.0.0.0")
         k = app_client.post("/api/kernels/import", json={"path": str(d)}).json()

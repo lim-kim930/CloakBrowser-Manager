@@ -31,6 +31,11 @@ async def import_kernel(req: KernelImportRequest):
         kernel = kernel_manager.import_kernel(req.path)
     except kernel_manager.KernelImportError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except OSError as exc:
+        # e.g. junction/symlink creation failure (network path, permissions).
+        # HTTPException responses carry CORS headers; a raw 500 would not.
+        logger.error("Kernel import failed for %s: %s", req.path, exc)
+        raise HTTPException(status_code=500, detail=f"Kernel import failed: {exc}")
     logger.info("Imported kernel %s from %s", kernel["version"], req.path)
     return _to_response(kernel)
 

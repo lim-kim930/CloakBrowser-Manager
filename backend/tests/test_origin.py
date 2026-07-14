@@ -81,3 +81,27 @@ def test_ws_upgrade_no_origin_reaches_endpoint(app_client: TestClient):
             pass
     except Exception as exc:
         assert "4403" not in str(exc)
+
+
+def test_unhandled_error_500_carries_cors_headers(tmp_db, installed_kernel, monkeypatch):
+    """Unhandled exceptions are answered outside CORSMiddleware; without the
+    custom handler adding the header, the WebView blocks the response and the
+    UI shows an opaque "Failed to fetch" instead of the error message."""
+    from unittest.mock import AsyncMock
+
+    from backend import kernel_manager
+
+    def boom(path):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(kernel_manager, "import_kernel", boom)
+    monkeypatch.setattr(main.browser_mgr, "cleanup_all", AsyncMock())
+    with TestClient(main.app, raise_server_exceptions=False) as client:
+        resp = client.post(
+            "/api/kernels/import",
+            json={"path": "X:\\nope"},
+            headers={"Origin": "http://tauri.localhost"},
+        )
+    assert resp.status_code == 500
+    assert "boom" in resp.json()["detail"]
+    assert resp.headers.get("access-control-allow-origin") == "http://tauri.localhost"

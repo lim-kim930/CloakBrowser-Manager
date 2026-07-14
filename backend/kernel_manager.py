@@ -75,11 +75,17 @@ def detect_version(directory: Path) -> str:
     )
 
 
+def _is_link(path: Path) -> bool:
+    """True for a symlink or an NTFS junction (dangling ones included)."""
+    return path.is_symlink() or path.is_junction()
+
+
 def create_link(version: str, target: Path) -> None:
     """Create <cache>/chromium-{version} pointing at target. Replaces a stale link."""
     link = kernel_dir(version)
     link.parent.mkdir(parents=True, exist_ok=True)
-    if link.exists() or link.is_symlink():
+    # lexists, not exists: a dangling link (deleted target) must be replaced too
+    if os.path.lexists(link):
         _remove_link(link)
     if sys.platform == "win32":
         import _winapi
@@ -110,13 +116,31 @@ def import_kernel(directory: str) -> dict:
     version = detect_version(target)
     if db.get_kernel_by_version(version):
         raise KernelImportError(f"Kernel {version} is already in the library")
+    link = kernel_dir(version)
+    if os.path.lexists(link) and not _is_link(link):
+        # A real directory occupies the cache slot: a download from before
+        # the kernel library existed (files on disk, no DB row). Never
+        # delete it to make room for a link.
+        if os.path.normcase(os.path.realpath(target)) == os.path.normcase(
+            os.path.realpath(link)
+        ):
+            # The user picked the cache copy itself — adopt it in place.
+            # The files live in the cache, so it is a "downloaded" kernel:
+            # deleting it later removes the directory, not a link.
+            return db.create_kernel(version, "downloaded")
+        raise KernelImportError(
+            f"Kernel {version} already exists in the app's kernel cache "
+            f"({link}). Import that directory instead to use it, or remove "
+            f"it first."
+        )
     create_link(version, target)
     return db.create_kernel(version, "imported", source_path=str(target))
 
 
 def remove_kernel_files(kernel: dict) -> None:
     d = kernel_dir(kernel["version"])
-    if not (d.exists() or d.is_symlink()):
+    # lexists: a dangling link (deleted target) must still be cleaned up
+    if not os.path.lexists(d):
         return
     if kernel["source"] == "imported":
         _remove_link(d)

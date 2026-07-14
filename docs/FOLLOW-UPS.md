@@ -54,15 +54,16 @@ non-blocking.
 
 ## Accepted scope decision (release-notes item, not a bug)
 
-- [ ] **Upgrade from the pre-kernel-library branch boots to an empty library.** The design spec
+- [x] **Upgrade from the pre-kernel-library branch boots to an empty library.** The design spec
       explicitly scoped out migration ("no existing users"). A machine that ran the previous
       branch has a valid kernel at `<data>/chromium-cache/chromium-{version}/` but no `kernels`
-      row → amber banner, no auto-launch, launch 503s. Recovery: Settings → **Download
-      recommended** (idempotent `ensure_binary()` adopts the on-disk kernel without
-      re-downloading). Do NOT import the cache directory itself — `create_link` would try to
-      replace a real directory and errors as an unhandled 500. If this ever matters beyond dev
-      machines, a ~15-line startup scan of `cache_dir()` registering existing `chromium-*` dirs
-      closes it (and would double as the missing from-old-schema migration test, below).
+      row → amber banner, no auto-launch, launch 503s. ~~Do NOT import the cache directory
+      itself~~ — **fixed 2026-07-14** (hit live on the dev machine as an opaque "Failed to
+      fetch"): importing the cache directory now adopts it in place as a `downloaded` kernel;
+      importing *another* copy of a version whose cache slot is occupied by a real directory
+      returns a clear 400 instead of an unhandled 500. `Download recommended` remains the other
+      recovery path. A startup scan auto-registering `chromium-*` dirs is still an option if
+      this ever matters beyond dev machines.
 
 ## Manual GUI verification (needs a human; API paths already smoke-tested live)
 
@@ -77,9 +78,18 @@ non-blocking.
 - [ ] `kernels_api._kernel_in_use`: also consider profiles mid-launch (in `_launching`, before
       `running` insertion) — TOCTOU lets DELETE remove kernel files during the Playwright await;
       today it fails the launch cleanly (500) instead of refusing (409).
-- [ ] `kernel_manager`: use `os.path.lexists()` in `create_link`/`remove_kernel_files` guards —
+- [x] `kernel_manager`: use `os.path.lexists()` in `create_link`/`remove_kernel_files` guards —
       dangling NTFS junctions (target deleted) evade `exists() or is_symlink()`, making
-      re-import error opaquely and leaking dead junctions.
+      re-import error opaquely and leaking dead junctions. — Done 2026-07-14 with the
+      import-cache-dir fix; unhandled 500s now also carry CORS headers (readable in the
+      WebView instead of "Failed to fetch"), and the import endpoint maps `OSError` to a
+      readable 500.
+- [ ] Sidecar shutdown cosmetics (found verifying the import fix live): after a graceful
+      `POST /api/shutdown` with stdin still open, the stdin-watchdog daemon thread blocked in
+      `sys.stdin.buffer.read()` trips `Fatal Python error: _enter_buffered_busy` at interpreter
+      finalization (cleanup has already completed; exit code is nonzero and the message lands
+      in the sidecar log). Fix idea: `os.read(sys.stdin.fileno(), ...)` in the watchdog instead
+      of the buffered reader, or `os._exit`-style teardown after cleanup.
 - [ ] `kernel_manager.remove_kernel_files`: `shutil.rmtree(..., ignore_errors=True)` masks
       partial deletes (read-only files) — surface failures.
 - [ ] `browser_manager.auto_launch_all`: gate is coarser than resolution — a profile with an
