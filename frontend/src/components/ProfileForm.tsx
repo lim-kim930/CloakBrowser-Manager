@@ -1,10 +1,11 @@
 import { Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Profile, ProfileCreateData } from "../lib/api";
+import type { Kernel, Profile, ProfileCreateData } from "../lib/api";
 import { CdpCopyButton } from "./CdpCopyButton";
 
 interface ProfileFormProps {
   profile: Profile | null; // null = create mode
+  kernels: Kernel[];
   onSave: (data: ProfileCreateData) => Promise<void>;
   onDelete?: () => Promise<void>;
   onCancel: () => void;
@@ -53,7 +54,7 @@ const GPU_PRESETS: Record<string, { vendor: string; renderer: string }> = {
   },
 };
 
-export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileFormProps) {
+export function ProfileForm({ profile, kernels, onSave, onDelete, onCancel }: ProfileFormProps) {
   const isEdit = profile !== null;
 
   const [form, setForm] = useState<ProfileCreateData>({
@@ -66,6 +67,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
     headless: false,
     geoip: false,
     auto_launch: false,
+    kernel_id: null,
     launch_args: [],
     tags: [],
   });
@@ -97,6 +99,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
         geoip: profile.geoip,
         auto_launch: profile.auto_launch,
         color_scheme: profile.color_scheme,
+        kernel_id: profile.kernel_id,
         launch_args: profile.launch_args ?? [],
         notes: profile.notes,
         tags: profile.tags ?? [],
@@ -209,8 +212,9 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Basic</h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="label">Profile Name</label>
+              <label className="label" htmlFor="profile-name">Profile Name</label>
               <input
+                id="profile-name"
                 className="input"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
@@ -272,6 +276,27 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
                   </svg>
                 </button>
               </div>
+            </div>
+            <div className="col-span-2">
+              <label className="label" htmlFor="profile-kernel">Browser Kernel</label>
+              <select
+                id="profile-kernel"
+                className="input"
+                value={form.kernel_id ?? ""}
+                onChange={(e) => set("kernel_id", e.target.value || null)}
+              >
+                <option value="">
+                  {(() => {
+                    const def = kernels.find((k) => k.is_default);
+                    return def ? `Follow default (${def.version})` : "Follow default (none configured)";
+                  })()}
+                </option>
+                {kernels.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.version}{k.valid ? "" : " (missing on disk)"}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </section>

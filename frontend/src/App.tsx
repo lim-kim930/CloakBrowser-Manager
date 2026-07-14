@@ -180,6 +180,7 @@ function AppContent() {
               {view === "create" && (
                 <ProfileForm
                   profile={null}
+                  kernels={kernelLib.kernels}
                   onSave={handleCreate}
                   onCancel={() => setView("empty")}
                 />
@@ -188,6 +189,7 @@ function AppContent() {
               {view === "edit" && selected && (
                 <ProfileForm
                   profile={selected}
+                  kernels={kernelLib.kernels}
                   onSave={handleUpdate}
                   onDelete={handleDelete}
                   onCancel={() => {
