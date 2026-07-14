@@ -21,7 +21,6 @@ deploy.sh
 # Claude Code
 .claude/
 publish-docker.sh
-.beads
 debug
 
 # PyInstaller sidecar

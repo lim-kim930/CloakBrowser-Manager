@@ -1,25 +1,25 @@
 # Follow-ups — Tauri desktop client branch
 
-Tracked here because the `bd` CLI is not installed on this machine. Source: per-task and
+Source: per-task and
 final whole-branch code reviews of `feature/tauri-desktop-client` (2026-07-13). None are
 merge-blocking; the final review approved the branch with these as follow-up work.
 
 ## Remaining manual verification (plan Task 17, needs a human at the GUI)
 
-- [ ] Run the packaged app (`frontend/src-tauri/target/release/cloakbrowser-manager.exe` or the
+- [x] Run the packaged app (`frontend/src-tauri/target/release/cloakbrowser-manager.exe` or the
       NSIS installer under `target/release/bundle/nsis/`) and confirm it reaches the main profile
       UI. **Watch the WebView devtools console for CORS/Origin 403s** — if the real WebView2
       origin differs from `http://tauri.localhost`, fix `DEFAULT_ALLOWED_ORIGINS` in
       `backend/main.py`. This is the highest-risk untested item (a mismatch makes the app
       appear read-only).
-- [ ] First-run kernel UX (superseded by kernel management, 2026-07-13): with an empty kernel
+- [x] First-run kernel UX (superseded by kernel management, 2026-07-13): with an empty kernel
       library the app must open to the main UI with the amber "No browser kernel configured"
       banner; Settings → Import registers an existing kernel dir; Download recommended fetches
       and registers the recommended version.
 - [ ] Port-conflict flow: occupy 8000, launch → PortConfigModal; choose 8001; config.json persists it.
-- [ ] Real profile launch + fingerprint sites (Rebrowser Bot Detector, Pixelscan); manual window
+- [x] Real profile launch + fingerprint sites (Rebrowser Bot Detector, Pixelscan); manual window
       close flips profile to "stopped" within ~3s.
-- [ ] External CDP: `connect_over_cdp` with the copied URL lists open pages.
+- [x] External CDP: `connect_over_cdp` with the copied URL lists open pages.
 - [ ] Three-layer teardown: window close (graceful `RunEvent::ExitRequested` path — not yet
       exercised), Task-Manager kill of the shell (stdin watchdog — already verified live in
       Task 13), kill of the sidecar (BackendErrorScreen + Retry).
@@ -67,7 +67,7 @@ non-blocking.
 
 ## Manual GUI verification (needs a human; API paths already smoke-tested live)
 
-- [ ] `pnpm tauri dev`: empty library → amber banner → Open Settings; import a **real** kernel
+- [x] `pnpm tauri dev`: empty library → amber banner → Open Settings; import a **real** kernel
       directory (native folder picker); banner disappears; profile launches with it
       (`browser_version=` pin — also confirms the real `launch_persistent_context_async`
       accepts the kwarg); deleting that kernel while the profile runs is refused (409 surfaced

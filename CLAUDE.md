@@ -76,26 +76,16 @@ cargo test --manifest-path frontend/src-tauri/Cargo.toml
 
 ## Issue Tracking
 
-This project uses **bd** (beads). Run `bd onboard` to get started.
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
-
-If the `bd` CLI is not installed on the machine, track follow-ups in a committed markdown doc instead and skip `bd sync`.
+Track follow-ups in a committed markdown doc (`docs/FOLLOW-UPS.md`): add items for remaining work, check off or remove items as they're finished.
 
 ## Landing the Plane (Session Completion)
 
 When ending a work session, work is NOT complete until `git push` succeeds:
 
-1. File issues for remaining work
+1. Record remaining work in `docs/FOLLOW-UPS.md`
 2. Run quality gates if code changed (tests, builds)
-3. Update issue status (close finished, update in-progress)
-4. Push: `git pull --rebase`, `bd sync` (if bd available), `git push`, then `git status` must show "up to date with origin"
+3. Update follow-up items (check off finished work)
+4. Push: `git pull --rebase`, `git push`, then `git status` must show "up to date with origin"
 5. Clean up stashes and stale branches, then hand off context for the next session
 
 Never stop before pushing and never say "ready to push when you are" — push it yourself. **Exception — interactive auth:** if push needs credentials only a human can provide (e.g. a Git Credential Manager GUI prompt in a non-interactive session), stop retrying: verify everything is committed, hand the exact push command to the user, and say why.

@@ -3589,7 +3589,7 @@ Expected: connects and lists the open pages.
 
 - [ ] **8. Land the branch**
 
-Update/close tracked issues (`bd` if installed, else note in a committed markdown doc), then:
+Update/close tracked issues in the committed markdown doc, then:
 
 ```bash
 git pull --rebase && git push

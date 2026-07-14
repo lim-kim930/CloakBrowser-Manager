@@ -2046,4 +2046,4 @@ git commit -m "docs: update architecture notes for kernel management"
 
 - [ ] **Step 4: Land the plane**
 
-Per CLAUDE.md session completion: file follow-up issues (bd if available, else markdown doc), `git pull --rebase`, `git push`, confirm `git status` is up to date.
+Per CLAUDE.md session completion: file follow-ups in the committed markdown doc, `git pull --rebase`, `git push`, confirm `git status` is up to date.
