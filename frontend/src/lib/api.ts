@@ -66,7 +66,7 @@ export interface LaunchResult {
 
 export interface SystemStatus {
   running_count: number;
-  binary_version: string;
+  binary_version: string | null;
   profiles_total: number;
 }
 
